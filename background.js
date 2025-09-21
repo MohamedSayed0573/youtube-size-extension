@@ -6,6 +6,35 @@ const HOST_NAME = 'com.ytdlp.sizer';
 const inFlight = new Set();
 const CLEAR_BADGE_MS = 8000; // Clear badge after 8s
 const lastFetchMs = new Map(); // videoId -> last fetch timestamp
+// Duration hints collected from content/popup to help host avoid extra duration calls
+const durationHints = new Map(); // videoId -> { d: seconds, ts: epoch_ms }
+const HINT_TTL_MS = 60 * 60 * 1000; // 1 hour TTL for duration hints
+
+function getDurationHint(videoId) {
+  try {
+    const rec = durationHints.get(videoId);
+    if (!rec) return null;
+    const ts = (rec && typeof rec.ts === 'number') ? rec.ts : 0;
+    if (!ts || (Date.now() - ts) > HINT_TTL_MS) {
+      try { durationHints.delete(videoId); } catch (_) {}
+      return null;
+    }
+    const v = rec && typeof rec.d === 'number' && isFinite(rec.d) && rec.d > 0 ? rec.d : null;
+    return v ? Math.round(v) : null;
+  } catch (_) { return null; }
+}
+
+function pruneDurationHints() {
+  try {
+    const now = Date.now();
+    for (const [vid, rec] of durationHints.entries()) {
+      const ts = (rec && typeof rec.ts === 'number') ? rec.ts : 0;
+      if (!ts || (now - ts) > HINT_TTL_MS) {
+        try { durationHints.delete(vid); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
 
 // Badge spinner management per tab
 const tabBadgeTimers = new Map(); // tabId -> intervalId
@@ -86,7 +115,7 @@ async function ensureBadgeForTab(url, tabId) {
 }
 
 // Settings with defaults
-const defaultSettings = { autoPrefetch: true, ttlHours: 6, showBadge: true, showLength: true, resolutions: ["480p", "720p", "1080p", "1440p"] };
+const defaultSettings = { autoPrefetch: true, ttlHours: 24, showBadge: true, showLength: true, resolutions: ["480p", "720p", "1080p", "1440p"] };
 let settings = { ...defaultSettings };
 
 function getTTLms() {
@@ -201,7 +230,7 @@ function cacheHasAnySize(cached) {
   } catch (_) { return false; }
 }
 
-function callNativeHost(url) {
+function callNativeHost(url, durationHint) {
   return new Promise((resolve, reject) => {
     let port;
     try {
@@ -237,7 +266,11 @@ function callNativeHost(url) {
     });
 
     try {
-      port.postMessage({ url });
+      const payload = { url };
+      if (typeof durationHint === 'number' && isFinite(durationHint) && durationHint > 0) {
+        payload.duration_hint = Math.round(durationHint);
+      }
+      port.postMessage(payload);
     } catch (e) {
       reject('Failed to send request to native host: ' + (e && e.message ? e.message : String(e)));
     }
@@ -278,7 +311,8 @@ async function prefetchForUrl(url, tabId, forced = false) {
     // Show a spinner badge on the active tab if available
     startBadgeSpinner(tabId);
 
-    const msg = await callNativeHost(url);
+    const durationHint = getDurationHint(videoId);
+    const msg = await callNativeHost(url, durationHint);
     if (msg && msg.ok) {
       const key = `sizeCache_${videoId}`;
       await cacheSetDual({
@@ -338,6 +372,7 @@ async function prefetchForUrl(url, tabId, forced = false) {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!tab || !tab.url) return;
   if (changeInfo.status === 'complete' || changeInfo.url) {
+    // Prefetch for any YouTube tab on load/update to honor auto-prefetch requirement
     prefetchForUrl(tab.url, tabId);
     ensureBadgeForTab(tab.url, tabId);
   }
@@ -359,7 +394,8 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 // Prefetch on startup and install for existing tabs
 async function prefetchExistingYouTubeTabs() {
   try {
-    const tabs = await tabsQuery({});
+    // Only prefetch for active tab(s) to reduce unnecessary startup load
+    const tabs = await tabsQuery({ active: true });
     for (const t of tabs) {
       if (t && t.url && isYouTubeUrl(t.url)) {
         prefetchForUrl(t.url, t.id);
@@ -370,6 +406,7 @@ async function prefetchExistingYouTubeTabs() {
 }
 
 chrome.runtime.onStartup.addListener(() => {
+  pruneDurationHints();
   prefetchExistingYouTubeTabs();
 });
 
@@ -396,6 +433,8 @@ async function cleanupOldCaches() {
       }
     }
     if (keysToRemove.length) await cacheRemoveDual(keysToRemove);
+    // Also prune duration hints
+    pruneDurationHints();
    } catch (_) {}
 }
 
@@ -412,6 +451,12 @@ try {
         const tabIdFromSender = sender && sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : undefined;
         const tabId = (msg && typeof msg.tabId === 'number') ? msg.tabId : tabIdFromSender;
         const url = msg.url;
+        // Capture duration hint when available
+        try {
+          const dur = (typeof msg.durationSec === 'number' && isFinite(msg.durationSec) && msg.durationSec > 0) ? Math.round(msg.durationSec) : null;
+          const vid = msg.videoId || (url ? extractVideoId(url) : null);
+          if (dur && vid) durationHints.set(vid, { d: dur, ts: Date.now() });
+        } catch (_) {}
         if (url && typeof tabId === 'number') {
           prefetchForUrl(url, tabId);
           ensureBadgeForTab(url, tabId);
@@ -440,6 +485,11 @@ try {
         try { sendResponse({ ok: false, reason: 'no_video_id' }); } catch (_) {}
         return;
       }
+      // Capture optional durationSec from popup-triggered prefetch
+      try {
+        const dur = (typeof msg.durationSec === 'number' && isFinite(msg.durationSec) && msg.durationSec > 0) ? Math.round(msg.durationSec) : null;
+        if (dur) durationHints.set(videoId, { d: dur, ts: Date.now() });
+      } catch (_) {}
       const forced = !!msg.forced;
       const now = Date.now();
       const last = lastFetchMs.get(videoId) || 0;

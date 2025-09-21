@@ -21,6 +21,8 @@
   let lastHumanMap = null;
   let lastBytesMap = null;
   let lastDuration = null;
+  let currentDurationSec = null;
+  let lastIsEstimated = false;
 
   // Bind Options button immediately so it works even if we early-return later
   if (optionsBtn) {
@@ -43,6 +45,32 @@
         try { window.open('options.html', '_blank'); } catch (_) {}
       }
     };
+  }
+
+  // Quick client-side estimates for fast initial display
+  function estimateSizeBytesByHeight(height, durationSec) {
+    if (!durationSec || !isFinite(durationSec) || durationSec <= 0) return null;
+    const avgMbps = {144:0.1, 240:0.3, 360:0.6, 480:1.2, 720:2.5, 1080:5.5, 1440:9.0};
+    const rate = avgMbps[height] || 1.2; // fallback
+    const bytes = (rate * 1000000 / 8) * durationSec; // Mbps -> Bps
+    return Math.max(0, Math.round(bytes));
+  }
+  function buildEstimateMaps(durationSec) {
+    const order = ['144p','240p','360p','480p','720p','1080p','1440p'];
+    const keyMap = { '144p':'s144p','240p':'s240p','360p':'s360p','480p':'s480p','720p':'s720p','1080p':'s1080p','1440p':'s1440p' };
+    const list = order.filter(r => selectedResolutions.includes(r));
+    const bytesMap = {};
+    const humanMap = {};
+    for (const r of list) {
+      const h = parseInt(r);
+      const b = estimateSizeBytesByHeight(h, durationSec);
+      const k = keyMap[r];
+      if (k) {
+        bytesMap[k] = b;
+        humanMap[k] = humanizeBytesDecimal(b);
+      }
+    }
+    return { humanMap, bytesMap };
   }
 
   function startStatusSpinner(base = 'Refreshing') {
@@ -76,9 +104,23 @@
     return `${v.toFixed(2)} ${units[i]}`;
   }
 
+  function humanizeDuration(seconds) {
+    if (seconds == null || !isFinite(seconds) || seconds <= 0) return null;
+    try {
+      const s = Math.round(seconds);
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+      return `${m}:${String(sec).padStart(2,'0')}`;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Cache config (synced with options)
-  let TTL_MS = 6 * 60 * 60 * 1000; // default 6 hours
-  const defaultSettings = { autoPrefetch: true, ttlHours: 6, showBadge: true, showLength: true, resolutions: ["480p", "720p", "1080p", "1440p"] };
+  let TTL_MS = 24 * 60 * 60 * 1000; // default 24 hours
+  const defaultSettings = { autoPrefetch: true, ttlHours: 24, showBadge: true, showLength: true, resolutions: ["480p", "720p", "1080p", "1440p"] };
   async function loadSettings() {
     try {
       const obj = await settingsGet(['ytSize_settings']);
@@ -227,7 +269,7 @@
         const it = String(currentItag);
         const chosen = available.find(v => v.def.itag === it);
         if (chosen) {
-          const part = `${chosen.def.codec}: ${chosen.value}`;
+          const part = `${chosen.def.codec}: ${lastIsEstimated ? 'Est. ' : ''}${chosen.value}`;
           valueSpan.textContent = part;
           rowDiv.appendChild(labelSpan);
           rowDiv.appendChild(document.createTextNode(' '));
@@ -247,11 +289,11 @@
 
       if (available.length > 0) {
         // Show multiple options side-by-side in one row with the resolution label on the left
-        const parts = available.map(v => `${v.def.codec}: ${v.value}`).join('  |  ');
+        const parts = available.map(v => `${v.def.codec}: ${lastIsEstimated ? 'Est. ' : ''}${v.value}`).join('  |  ');
         valueSpan.textContent = parts;
       } else {
         const val = (human || humanizeBytesDecimal(bytes) || 'N/A');
-        valueSpan.textContent = val;
+        valueSpan.textContent = (lastIsEstimated && val !== 'N/A') ? `Est. ${val}` : val;
       }
 
       rowDiv.appendChild(labelSpan);
@@ -271,13 +313,14 @@
     sizesContainer.appendChild(frag);
   }
 
-  function showResult(humanMap, bytesMap, note, duration) {
+  function showResult(humanMap, bytesMap, note, duration, isEstimated) {
     statusEl.style.display = 'none';
     errEl.style.display = 'none';
     resultEl.style.display = 'block';
     lastHumanMap = humanMap || null;
     lastBytesMap = bytesMap || null;
     lastDuration = duration || null;
+    lastIsEstimated = !!isEstimated;
     renderSizes(humanMap, bytesMap);
     if (durationEl) {
       durationEl.textContent = (duration ?? 'N/A');
@@ -338,7 +381,7 @@
     await cacheSet({ [key]: data });
   }
 
-  function callNativeHost(url) {
+  function callNativeHost(url, durationHint) {
     return new Promise((resolve, reject) => {
       const hostName = 'com.ytdlp.sizer';
       let responded = false;
@@ -374,18 +417,24 @@
       });
 
       try {
-        port.postMessage({ url });
+        const payload = { url };
+        if (typeof durationHint === 'number' && isFinite(durationHint) && durationHint > 0) {
+          payload.duration_hint = Math.round(durationHint);
+        }
+        port.postMessage(payload);
       } catch (e) {
         reject('Failed to send request to native host: ' + (e && e.message ? e.message : String(e)));
       }
     });
   }
 
-  function requestBackgroundPrefetch(url, forced = false, tabId) {
+  function requestBackgroundPrefetch(url, forced = false, tabId, durationSec) {
     return new Promise((resolve, reject) => {
       try {
         if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) return resolve({ ok: false });
-        chrome.runtime.sendMessage({ type: 'prefetch', url, forced, tabId }, (resp) => {
+        const msg = { type: 'prefetch', url, forced, tabId };
+        if (typeof durationSec === 'number' && isFinite(durationSec) && durationSec > 0) msg.durationSec = Math.round(durationSec);
+        chrome.runtime.sendMessage(msg, (resp) => {
           const err = chrome && chrome.runtime && chrome.runtime.lastError ? chrome.runtime.lastError : null;
           if (err) {
             resolve({ ok: false, error: err.message || String(err) });
@@ -440,6 +489,7 @@
           if (resp.videoId === currentVideoId) {
             currentResLabel = resp.label || null;
             currentItag = resp.itag || null;
+            currentDurationSec = (typeof resp.durationSec === 'number' && isFinite(resp.durationSec) && resp.durationSec > 0) ? Math.round(resp.durationSec) : null;
             if (resultEl.style.display !== 'none') {
               renderSizes(lastHumanMap, lastBytesMap);
             }
@@ -461,16 +511,22 @@
       showResult(cached.human, cached.bytes, `Cached (stale) • ${formatAge(cached.timestamp)} • refreshing…`, dur);
       startStatusSpinner('Refreshing');
     } else {
-      statusEl.textContent = 'Contacting native host…';
+      // If we have duration, show quick estimates immediately
+      if (currentDurationSec) {
+        const { humanMap, bytesMap } = buildEstimateMaps(currentDurationSec);
+        showResult(humanMap, bytesMap, 'Estimated • fetching exact…', humanizeDuration(currentDurationSec), true);
+      } else {
+        statusEl.textContent = 'Contacting native host…';
+      }
     }
 
     async function doFetch() {
       try {
         startStatusSpinner('Refreshing');
-        const resp = await requestBackgroundPrefetch(url, true /* forced */, currentTabId);
+        const resp = await requestBackgroundPrefetch(url, true /* forced */, currentTabId, currentDurationSec || undefined);
         if (!resp || resp.ok === false) {
           // Fallback: call native directly (older browsers or if messaging fails)
-          const msg = await callNativeHost(url);
+          const msg = await callNativeHost(url, currentDurationSec || undefined);
           if (msg && msg.ok) {
             const dur = msg.human && msg.human.duration ? msg.human.duration : null;
             await writeCache(videoId, {
@@ -520,7 +576,7 @@
               if (!hasSizes) {
                 // Fallback to direct host call to avoid persistent N/A
                 try {
-                  const msg = await callNativeHost(url);
+                  const msg = await callNativeHost(url, currentDurationSec || undefined);
                   if (msg && msg.ok) {
                     const dur = msg.human && msg.human.duration ? msg.human.duration : null;
                     await writeCache(videoId, {
@@ -576,6 +632,7 @@
           if (!msg.videoId || msg.videoId !== currentVideoId) return;
           currentResLabel = msg.label || null;
           currentItag = msg.itag || null;
+          currentDurationSec = (typeof msg.durationSec === 'number' && isFinite(msg.durationSec) && msg.durationSec > 0) ? Math.round(msg.durationSec) : currentDurationSec;
           if (resultEl && resultEl.style.display !== 'none') {
             renderSizes(lastHumanMap, lastBytesMap);
           }
@@ -595,7 +652,7 @@
           stopStatusSpinner();
           statusEl.style.display = 'none';
           try {
-            const msg2 = await callNativeHost(currentUrl);
+            const msg2 = await callNativeHost(currentUrl, currentDurationSec || undefined);
             if (msg2 && msg2.ok) {
               const dur = msg2.human && msg2.human.duration ? msg2.human.duration : null;
               await writeCache(currentVideoId, {

@@ -1,5 +1,5 @@
 (function() {
-  const defaultSettings = { autoPrefetch: true, ttlHours: 6, showBadge: true, showLength: true, resolutions: ["480p", "720p", "1080p", "1440p"] };
+  const defaultSettings = { autoPrefetch: true, ttlHours: 24, showBadge: true, showLength: true, resolutions: ["480p", "720p", "1080p", "1440p"] };
 
   function $(id) { return document.getElementById(id); }
 

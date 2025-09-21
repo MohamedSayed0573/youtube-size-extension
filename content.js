@@ -76,6 +76,7 @@
     const label = mapHeightToLabel(vh);
     const itag = extractCurrentItag();
     const videoId = extractVideoId(location.href);
+    const dur = vid ? Math.round((Number.isFinite(vid.duration) ? vid.duration : 0)) : 0;
     // Debounce identical values
     if (!force && lastLabel === label && lastHeight === vh && lastVideoId === videoId && lastItag === itag) return;
     lastLabel = label;
@@ -89,7 +90,8 @@
         height: vh,
         label,
         videoId,
-        itag
+        itag,
+        durationSec: (dur && dur > 0 ? dur : undefined)
       }, () => {
         // ignore lastError
         const _e = chrome && chrome.runtime && chrome.runtime.lastError; void _e;
@@ -148,7 +150,8 @@
         const label = mapHeightToLabel(vh);
         const itag = extractCurrentItag();
         const videoId = extractVideoId(location.href);
-        try { sendResponse({ ok: true, height: vh, label, url: location.href, videoId, itag }); } catch (_) {}
+        const dur = v ? Math.round((Number.isFinite(v.duration) ? v.duration : 0)) : 0;
+        try { sendResponse({ ok: true, height: vh, label, url: location.href, videoId, itag, durationSec: (dur && dur > 0 ? dur : undefined) }); } catch (_) {}
         return true;
       }
     });
@@ -156,7 +159,7 @@
 
   // Hook into SPA navigations with minimal overhead (no inline scripts)
   listenForSpaNavigations();
-  startUrlPoller();
+  startUrlPoller(3000);
 
   // Kick off
   if (document.readyState === 'complete' || document.readyState === 'interactive') {

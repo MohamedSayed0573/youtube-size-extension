@@ -103,7 +103,7 @@ def parse_sizes_from_format_list(text: str):
     return sizes
 
 
-def run_ytdlp_dump_json(url: str, timeout_sec: int = 35):
+def run_ytdlp_dump_json(url: str, timeout_sec: int = 25):
     """Return (json_obj:dict|None, err:str|None, code:int) using -J --no-playlist to avoid multiple calls"""
     try:
         proc = subprocess.run(
@@ -277,7 +277,7 @@ def _pick_progressive_by_height(formats: List[Dict[str, Any]], target_h: int, du
     return None, None
 
 
-def compute_sizes_from_json_all(meta: dict):
+def compute_sizes_from_json_all(meta: dict, duration_hint: Optional[int] = None):
     """Compute sizes for 144p, 240p, 360p, 480p, 720p, 1080p plus duration from yt-dlp JSON.
     Prefer separate video-only by target height + best audio; otherwise fall back to progressive.
     Returns (sizes_by_height: dict, video_only_by_id: dict, audio_251_bytes: int|None, duration_sec: int|None).
@@ -304,6 +304,10 @@ def compute_sizes_from_json_all(meta: dict):
             duration_sec = int(float(d))
     except Exception:
         duration_sec = None
+    # If the JSON didn't include duration, use a provided hint
+    if duration_sec is None and isinstance(duration_hint, int) and duration_hint > 0:
+        _dbg(f"using duration_hint in JSON compute: {duration_hint}")
+        duration_sec = duration_hint
 
     def fmt_by_id(fid: str):
         for f in (meta.get('formats') or []):
@@ -369,7 +373,7 @@ def compute_sizes_from_json_all(meta: dict):
     return sizes, video_only, a251_b, duration_sec
 
 
-def run_ytdlp_list_formats(url: str, timeout_sec: int = 35):
+def run_ytdlp_list_formats(url: str, timeout_sec: int = 25):
     try:
         proc = subprocess.run(
             ["yt-dlp", "-F", "--no-playlist", url],
@@ -425,6 +429,17 @@ def main():
         _dbg("no request received; exiting")
         return
     url = req.get('url') if isinstance(req, dict) else None
+    duration_hint = None
+    try:
+        dh = req.get('duration_hint') if isinstance(req, dict) else None
+        if dh is not None:
+            duration_hint = int(float(dh))
+            if duration_hint <= 0:
+                duration_hint = None
+    except Exception:
+        duration_hint = None
+    if duration_hint is not None:
+        _dbg(f"duration_hint received: {duration_hint}")
     if not url:
         _dbg("request missing 'url'")
         send_message({"ok": False, "error": "No URL provided."})
@@ -443,7 +458,7 @@ def main():
     dur_sec = None
 
     if j_code == 0 and meta:
-        sizes_by_h, video_only_by_id, a251_b, dur_sec = compute_sizes_from_json_all(meta)
+        sizes_by_h, video_only_by_id, a251_b, dur_sec = compute_sizes_from_json_all(meta, duration_hint)
         s144 = sizes_by_h.get('s144')
         s240 = sizes_by_h.get('s240')
         s360 = sizes_by_h.get('s360')
@@ -504,12 +519,15 @@ def main():
             s1440_308 = (v1440_308 + a251) if (v1440_308 is not None and a251 is not None) else None
             s1440_400 = (v1440_400 + a251) if (v1440_400 is not None and a251 is not None) else None
 
-    # Duration if still missing
-    if dur_sec is None:
+    # Duration if still missing and no valid hint provided
+    if dur_sec is None and not (isinstance(duration_hint, int) and duration_hint > 0):
         _dbg("fetching duration ...")
         dur_sec, d_err, d_code = run_ytdlp_get_duration(url)
         if d_code != 0:
             _dbg(f"duration fetch failed code={d_code} err={(d_err or '')[:200]}")
+    elif dur_sec is None and isinstance(duration_hint, int) and duration_hint > 0:
+        _dbg("skipping duration fetch due to valid duration_hint")
+        dur_sec = duration_hint
 
     dur_h = humanize_duration(dur_sec)
 
