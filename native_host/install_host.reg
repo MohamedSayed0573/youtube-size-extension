@@ -1,0 +1,17 @@
+Windows Registry Editor Version 5.00
+
+; Google Chrome (user-level)
+[HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts\com.ytdlp.sizer]
+@="D:\\extention\\native_host\\com.ytdlp.sizer.json"
+
+; Chromium (user-level) - optional, uncomment if you use Chromium
+;[HKEY_CURRENT_USER\Software\Chromium\NativeMessagingHosts\com.ytdlp.sizer]
+;@="D:\\extention\\native_host\\com.ytdlp.sizer.json"
+
+; Microsoft Edge (user-level) - optional, if using Edge
+;[HKEY_CURRENT_USER\Software\Microsoft\Edge\NativeMessagingHosts\com.ytdlp.sizer]
+;@="D:\\extention\\native_host\\com.ytdlp.sizer.json"
+
+; Mozilla Firefox (user-level)
+[HKEY_CURRENT_USER\Software\Mozilla\NativeMessagingHosts\com.ytdlp.sizer]
+@="D:\\extention\\native_host\\com.ytdlp.sizer.firefox.json"

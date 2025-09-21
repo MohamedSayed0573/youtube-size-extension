@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>YouTube Size</title>
+  <style>
+    body { 
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, sans-serif; 
+      margin: 12px; 
+      min-width: 280px;
+      background: #121212;
+      color: #e6e6e6;
+      color-scheme: dark;
+    }
+    h1 { font-size: 16px; margin: 0 0 8px; color: #ffffff; }
+    .row { margin: 6px 0; }
+    .row.controls { display: flex; align-items: center; gap: 8px; }
+    .row.controls #note { flex: 1 1 auto; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .label { display: inline-block; width: 80px; color: #b3b3b3; }
+    .value { font-weight: 600; color: #ffffff; }
+    .muted { color: #9aa0a6; }
+    .error { color: #ff6b6b; white-space: pre-wrap; }
+    #result { margin-top: 8px; }
+    button { background: #1f1f1f; color: #e6e6e6; border: 1px solid #333; border-radius: 6px; padding: 6px 10px; }
+    button:hover { background: #2a2a2a; border-color: #444; }
+  </style>
+</head>
+<body>
+  <h1>YouTube Size</h1>
+  <div id="status" class="muted">Reading current tab…</div>
+  <div class="row controls">
+    <button id="refresh" style="display:none;">Refresh</button>
+    <button id="optionsBtn" style="margin-left:8px;">Options</button>
+    <span id="note" class="muted" style="margin-left:8px;"></span>
+  </div>
+  <div id="result" style="display:none;">
+    <div id="sizes"></div>
+    <div class="row" id="durationRow"><span class="label">Length:</span> <span id="duration" class="value">—</span></div>
+  </div>
+  <div id="err" class="error" style="display:none;"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
