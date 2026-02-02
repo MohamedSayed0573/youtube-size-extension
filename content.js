@@ -18,6 +18,8 @@
  * @version 0.2.0
  */
 
+/* global isYouTubeUrl, extractVideoId */
+
 (function () {
     // Detect current playing resolution on YouTube and send updates
     let lastLabel = null;

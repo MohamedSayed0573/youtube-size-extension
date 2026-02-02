@@ -1,3 +1,5 @@
+/* global humanizeBytes, humanizeDuration, extractVideoId, isYouTubeUrl */
+
 (async () => {
     const statusEl = document.getElementById("status");
     const resultEl = document.getElementById("result");

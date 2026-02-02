@@ -11,8 +11,7 @@
  * - Automatic worker recycling after max tasks
  * - Graceful shutdown handling
  * - Integration with circuit breaker
- *
- * @fileoverview Worker pool for non-blocking yt-dlp execution
+ * @file Worker pool for non-blocking yt-dlp execution
  * @author YouTube Size Extension Team
  * @version 2.0.0
  */
@@ -26,8 +25,7 @@ const path = require("path");
  *
  * Manages worker threads and task queue for parallel yt-dlp execution.
  * Automatically scales workers based on load and recycles them to prevent memory leaks.
- *
- * @extends EventEmitter
+ * @augments EventEmitter
  * @example
  *   const pool = new WorkerPool({
  *     minWorkers: 2,
@@ -45,14 +43,13 @@ const path = require("path");
 class WorkerPool extends EventEmitter {
     /**
      * Create a worker pool
-     *
      * @param {Object} options - Configuration options
-     * @param {number} [options.minWorkers=2] - Minimum workers to maintain
-     * @param {number} [options.maxWorkers=10] - Maximum workers allowed
+     * @param {number} [options.minWorkers] - Minimum workers to maintain
+     * @param {number} [options.maxWorkers] - Maximum workers allowed
      * @param {string} [options.workerScript] - Path to worker script
-     * @param {number} [options.taskTimeout=30000] - Task timeout in ms
-     * @param {number} [options.maxTasksPerWorker=100] - Tasks before recycling
-     * @param {number} [options.idleTimeout=120000] - Idle time before terminating worker
+     * @param {number} [options.taskTimeout] - Task timeout in ms
+     * @param {number} [options.maxTasksPerWorker] - Tasks before recycling
+     * @param {number} [options.idleTimeout] - Idle time before terminating worker
      */
     constructor(options = {}) {
         super();
@@ -89,7 +86,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Initialize minimum number of workers
-     *
      * @private
      */
     _initializeWorkers() {
@@ -100,7 +96,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Create a new worker thread
-     *
      * @private
      * @returns {Object} Worker info object
      */
@@ -154,7 +149,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Handle result from worker
-     *
      * @private
      * @param {number} workerId - Worker ID
      * @param {Object} result - Result from worker
@@ -202,7 +196,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Handle worker error
-     *
      * @private
      * @param {number} workerId - Worker ID
      * @param {Error} error - Error from worker
@@ -233,7 +226,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Handle worker exit
-     *
      * @private
      * @param {number} workerId - Worker ID
      * @param {number} code - Exit code
@@ -255,13 +247,12 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Execute task in worker pool
-     *
      * @async
      * @param {Object} task - Task configuration
      * @param {string} task.url - YouTube URL
      * @param {number} task.timeout - Timeout in ms
      * @param {number} task.maxBuffer - Max buffer size
-     * @param {number} [task.retryAttempt=0] - Retry attempt number
+     * @param {number} [task.retryAttempt] - Retry attempt number
      * @returns {Promise<Object>} yt-dlp metadata
      * @throws {Error} If task fails or times out
      */
@@ -305,7 +296,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Get available worker or null
-     *
      * @private
      * @returns {Object|null} Available worker info
      */
@@ -320,7 +310,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Execute task on worker
-     *
      * @private
      * @param {Object} workerInfo - Worker info
      * @param {Object} taskInfo - Task info with resolve/reject
@@ -359,7 +348,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Process next task from queue
-     *
      * @private
      */
     _processNextTask() {
@@ -376,7 +364,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Start idle timer for worker
-     *
      * @private
      * @param {number} workerId - Worker ID
      */
@@ -401,7 +388,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Recycle worker (terminate and create new one)
-     *
      * @private
      * @param {number} workerId - Worker ID
      */
@@ -414,7 +400,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Destroy worker
-     *
      * @private
      * @param {number} workerId - Worker ID
      */
@@ -446,7 +431,6 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Get pool statistics
-     *
      * @returns {Object} Pool stats
      */
     getStats() {
@@ -466,9 +450,8 @@ class WorkerPool extends EventEmitter {
 
     /**
      * Shutdown worker pool gracefully
-     *
      * @async
-     * @param {number} [timeout=10000] - Shutdown timeout in ms
+     * @param {number} [timeout] - Shutdown timeout in ms
      * @returns {Promise<void>}
      */
     async shutdown(timeout = 10000) {

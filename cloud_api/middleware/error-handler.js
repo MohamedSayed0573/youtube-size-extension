@@ -7,6 +7,8 @@ const Sentry = require("@sentry/node");
 
 /**
  * 404 Not Found handler
+ * @param req
+ * @param res
  */
 function notFoundHandler(req, res) {
     res.status(404).json({
@@ -28,6 +30,7 @@ function notFoundHandler(req, res) {
 /**
  * Global error handler
  * Must be registered after Sentry error handler
+ * @param logger
  */
 function errorHandler(logger) {
     return (err, req, res, next) => {
