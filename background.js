@@ -15,6 +15,8 @@
  * @version 0.2.0
  */
 
+/* global isYouTubeUrl, extractVideoId, humanizeBytes, humanizeDuration */
+
 // Import shared utilities
 importScripts("utils.js");
 
