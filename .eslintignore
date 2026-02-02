@@ -14,3 +14,9 @@ native_host/
 
 # Config files
 *.json
+
+# Old backup files
+cloud_api/server-old.js
+
+# Test files (use Jest environment)
+cloud_api/tests/*.test.js

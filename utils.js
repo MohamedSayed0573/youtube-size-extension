@@ -120,6 +120,7 @@ function humanizeDuration(seconds) {
 }
 
 // Export for use in other modules (browser extension context)
+/* eslint-disable no-undef */
 if (typeof module !== "undefined" && module.exports) {
     // Node.js/CommonJS environment
     module.exports = {
