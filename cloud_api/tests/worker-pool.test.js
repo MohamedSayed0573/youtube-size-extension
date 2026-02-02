@@ -128,9 +128,9 @@ describe("Circuit Breaker", () => {
         // Force circuit to OPEN
         breaker.forceState(STATE.OPEN);
 
-        await expect(
-            breaker.execute(async () => "success")
-        ).rejects.toThrow("Circuit breaker is OPEN");
+        await expect(breaker.execute(async () => "success")).rejects.toThrow(
+            "Circuit breaker is OPEN"
+        );
     });
 
     test("should transition to HALF_OPEN after timeout", async () => {

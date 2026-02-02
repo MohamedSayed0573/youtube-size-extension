@@ -144,7 +144,10 @@ class WorkerPool extends EventEmitter {
             this.stats.activeWorkers
         );
 
-        this.emit("workerCreated", { workerId, totalWorkers: this.workers.size });
+        this.emit("workerCreated", {
+            workerId,
+            totalWorkers: this.workers.size,
+        });
 
         return workerInfo;
     }

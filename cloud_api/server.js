@@ -35,6 +35,30 @@ const pino = require("pino");
 const WorkerPool = require("./worker-pool");
 const { CircuitBreaker } = require("./circuit-breaker");
 
+// ============================================
+// Constants
+// ============================================
+
+const TIMEOUTS = {
+    YTDLP_DEFAULT: 25000,        // 25 seconds for yt-dlp execution
+    TASK_BUFFER: 5000,           // 5 second buffer for worker tasks
+    HEALTH_CHECK: 5000,          // 5 seconds for health check
+    WORKER_IDLE: 120000,         // 2 minutes worker idle timeout
+    CIRCUIT_COOLDOWN: 60000,     // 1 minute circuit breaker cooldown
+    SHUTDOWN_GRACE: 10000,       // 10 seconds graceful shutdown
+};
+
+const LIMITS = {
+    MAX_BUFFER: 10 * 1024 * 1024,  // 10 MB max buffer for yt-dlp output
+    REQUEST_BODY: "10kb",           // 10 KB max request body
+    MIN_WORKERS: 2,                 // Minimum worker pool size
+    MAX_WORKERS: 10,                // Maximum worker pool size
+    MAX_TASKS_PER_WORKER: 100,     // Tasks before worker recycle
+    CIRCUIT_FAILURE_THRESHOLD: 5,  // Failures before circuit opens
+    CIRCUIT_SUCCESS_THRESHOLD: 2,  // Successes to close circuit
+    CIRCUIT_VOLUME_THRESHOLD: 10,  // Min requests before evaluation
+};
+
 // Initialize logger
 const logger = pino({
     level:
@@ -80,8 +104,8 @@ const envSchema = z
         RATE_LIMIT_MAX_REQUESTS: z.string().default("20").transform(Number),
 
         // yt-dlp configuration
-        YTDLP_TIMEOUT: z.string().default("25000").transform(Number),
-        YTDLP_MAX_BUFFER: z.string().default("10485760").transform(Number),
+        YTDLP_TIMEOUT: z.string().default(String(TIMEOUTS.YTDLP_DEFAULT)).transform(Number),
+        YTDLP_MAX_BUFFER: z.string().default(String(LIMITS.MAX_BUFFER)).transform(Number),
     })
     .refine((data) => !data.REQUIRE_AUTH || data.API_KEY !== "", {
         message: "API_KEY must be set when REQUIRE_AUTH is true",
@@ -107,14 +131,14 @@ try {
         process.exit(1);
     }
 
-    CONFIG = {
+    CONFIG = Object.freeze({
         ...parsed.data,
         API_VERSION: "v1",
         ALLOWED_ORIGINS:
             parsed.data.ALLOWED_ORIGINS === "*"
                 ? "*"
                 : parsed.data.ALLOWED_ORIGINS.split(",").map((s) => s.trim()),
-    };
+    });
 
     logger.info(
         { config: CONFIG },
@@ -136,19 +160,19 @@ const app = express();
 
 // Initialize worker pool for non-blocking yt-dlp execution
 const workerPool = new WorkerPool({
-    minWorkers: parseInt(process.env.MIN_WORKERS || "2", 10),
-    maxWorkers: parseInt(process.env.MAX_WORKERS || "10", 10),
-    taskTimeout: CONFIG.YTDLP_TIMEOUT + 5000, // +5s buffer
-    maxTasksPerWorker: 100,
-    idleTimeout: 120000, // 2 minutes
+    minWorkers: parseInt(process.env.MIN_WORKERS || String(LIMITS.MIN_WORKERS), 10),
+    maxWorkers: parseInt(process.env.MAX_WORKERS || String(LIMITS.MAX_WORKERS), 10),
+    taskTimeout: CONFIG.YTDLP_TIMEOUT + TIMEOUTS.TASK_BUFFER,
+    maxTasksPerWorker: LIMITS.MAX_TASKS_PER_WORKER,
+    idleTimeout: TIMEOUTS.WORKER_IDLE,
 });
 
 // Initialize circuit breaker for fault tolerance
 const circuitBreaker = new CircuitBreaker({
-    failureThreshold: 5,
-    successThreshold: 2,
-    timeout: 60000, // 1 minute cooldown
-    volumeThreshold: 10,
+    failureThreshold: LIMITS.CIRCUIT_FAILURE_THRESHOLD,
+    successThreshold: LIMITS.CIRCUIT_SUCCESS_THRESHOLD,
+    timeout: TIMEOUTS.CIRCUIT_COOLDOWN,
+    volumeThreshold: LIMITS.CIRCUIT_VOLUME_THRESHOLD,
     name: "yt-dlp",
 });
 
@@ -211,7 +235,7 @@ const shutdown = async (signal) => {
 
     // Shutdown worker pool (wait for active tasks)
     try {
-        await workerPool.shutdown(10000);
+        await workerPool.shutdown(TIMEOUTS.SHUTDOWN_GRACE);
         logger.info("Worker pool shutdown complete");
     } catch (error) {
         logger.error({ error: error.message }, "Worker pool shutdown error");
@@ -219,6 +243,19 @@ const shutdown = async (signal) => {
 
     process.exit(0);
 };
+
+// Handle uncaught exceptions gracefully
+process.on("uncaughtException", (error) => {
+    logger.fatal({ error: error.message, stack: error.stack }, "Uncaught exception");
+    Sentry.captureException(error);
+    shutdown("uncaughtException");
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+    logger.fatal({ reason, promise }, "Unhandled promise rejection");
+    Sentry.captureException(reason);
+    shutdown("unhandledRejection");
+});
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
@@ -255,7 +292,7 @@ const corsOptions = {
     credentials: true,
 };
 app.use(cors(corsOptions));
-app.use(express.json({ limit: "10kb" })); // Limit request body size
+app.use(express.json({ limit: LIMITS.REQUEST_BODY }));
 
 // Rate limiting configuration
 const apiLimiter = rateLimit({
@@ -484,11 +521,7 @@ async function extractInfo(url, maxRetries = 2) {
             }
 
             // Don't retry on timeout or critical errors
-            const noRetryErrors = [
-                "TIMEOUT",
-                "NOT_FOUND",
-                "VIDEO_UNAVAILABLE",
-            ];
+            const noRetryErrors = ["TIMEOUT", "NOT_FOUND", "VIDEO_UNAVAILABLE"];
             if (noRetryErrors.includes(error.code)) {
                 break;
             }
@@ -685,10 +718,10 @@ app.get("/health", apiLimiter, async (req, res) => {
         let ytdlpVersion = "unknown";
         let ytdlpAvailable = false;
         try {
-            // Use worker pool for health check too
+            // Use worker pool for health check with dynamic timeout
             const result = await workerPool.execute({
                 url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", // Test video
-                timeout: 5000,
+                timeout: TIMEOUTS.HEALTH_CHECK,
                 maxBuffer: 1024 * 1024,
                 retryAttempt: 0,
             });
@@ -791,7 +824,9 @@ app.get("/api/v1/docs", (req, res) => {
             health: {
                 "GET /": "Root endpoint with basic info",
                 "GET /health": "Health check with system metrics",
-                "GET /api/v1/metrics": "Worker pool and circuit breaker metrics",
+                "GET /api/v1/metrics":
+                    "Worker pool and circuit breaker metrics",
+                "GET /api/v1/openapi": "OpenAPI 3.0 specification",
             },
             api: {
                 "POST /api/v1/size": "Extract video size information",
@@ -813,8 +848,26 @@ app.get("/api/v1/docs", (req, res) => {
                 "Automatic retry with exponential backoff (up to 2 retries)",
             cacheStrategy:
                 "Client-side caching recommended (extension handles TTL)",
+            openapi: "OpenAPI 3.0 specification available at /api/v1/openapi",
         },
     });
+});
+
+/**
+ * OpenAPI specification endpoint
+ * Serves the complete OpenAPI 3.0 specification
+ */
+app.get("/api/v1/openapi", (req, res) => {
+    try {
+        const openApiSpec = require("./openapi.json");
+        res.json(openApiSpec);
+    } catch (error) {
+        logger.error({ error: error.message }, "Failed to load OpenAPI spec");
+        res.status(500).json({
+            ok: false,
+            error: "Failed to load OpenAPI specification",
+        });
+    }
 });
 
 /**
@@ -888,13 +941,11 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
         // Validate URL is provided
         if (!url) {
             req.log.warn("Request missing URL parameter");
-            return res
-                .status(400)
-                .json({
-                    ok: false,
-                    error: "URL is required",
-                    requestId: req.requestId,
-                });
+            return res.status(400).json({
+                ok: false,
+                error: "URL is required",
+                requestId: req.requestId,
+            });
         }
 
         // Validate URL is safe and is a YouTube URL
@@ -1006,6 +1057,7 @@ app.use((req, res) => {
             "/health",
             "/api/v1/size",
             "/api/v1/docs",
+            "/api/v1/openapi",
             "/api/v1/metrics",
             "/api/v1/admin/circuit-breaker/reset",
         ],

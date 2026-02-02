@@ -1,0 +1,599 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "YouTube Size Extension Cloud API",
+    "description": "RESTful API for extracting YouTube video size information using yt-dlp. Features non-blocking worker pool execution and circuit breaker fault tolerance.",
+    "version": "2.0.0",
+    "contact": {
+      "name": "YouTube Size Extension",
+      "url": "https://github.com/your-repo/youtube-size-extension"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development server"
+    },
+    {
+      "url": "https://your-api.example.com",
+      "description": "Production server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Health check and system status endpoints"
+    },
+    {
+      "name": "API",
+      "description": "Core video size extraction API"
+    },
+    {
+      "name": "Monitoring",
+      "description": "Metrics and monitoring endpoints"
+    },
+    {
+      "name": "Admin",
+      "description": "Administrative operations (requires authentication)"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root endpoint",
+        "description": "Returns basic service information",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Service information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RootResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Returns comprehensive health status including worker pool, circuit breaker, and system metrics",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Health status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Service unhealthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/size": {
+      "post": {
+        "summary": "Extract video sizes",
+        "description": "Extracts size information for multiple resolutions of a YouTube video",
+        "tags": ["API"],
+        "security": [
+          {},
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SizeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Size information extracted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SizeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests - rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad gateway - yt-dlp error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable - circuit breaker open",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway timeout - yt-dlp timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/docs": {
+      "get": {
+        "summary": "API documentation",
+        "description": "Returns human-readable API documentation",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "API documentation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openapi": {
+      "get": {
+        "summary": "OpenAPI specification",
+        "description": "Returns the complete OpenAPI 3.0 specification for this API",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "OpenAPI specification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "summary": "System metrics",
+        "description": "Returns real-time worker pool and circuit breaker metrics",
+        "tags": ["Monitoring"],
+        "responses": {
+          "200": {
+            "description": "System metrics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/circuit-breaker/reset": {
+      "post": {
+        "summary": "Reset circuit breaker",
+        "description": "Manually reset the circuit breaker to CLOSED state",
+        "tags": ["Admin"],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Circuit breaker reset successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Circuit breaker reset successfully"
+                    },
+                    "previousState": {
+                      "type": "string",
+                      "example": "OPEN"
+                    },
+                    "currentState": {
+                      "type": "string",
+                      "example": "CLOSED"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API key for authentication (required when REQUIRE_AUTH=true)"
+      }
+    },
+    "schemas": {
+      "RootResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": true
+          },
+          "service": {
+            "type": "string",
+            "example": "ytdlp-sizer-api"
+          },
+          "version": {
+            "type": "string",
+            "example": "v1"
+          },
+          "status": {
+            "type": "string",
+            "example": "running"
+          },
+          "documentation": {
+            "type": "string",
+            "example": "/api/v1/docs"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["healthy", "degraded", "unhealthy"]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "string"
+          },
+          "uptime": {
+            "type": "object",
+            "properties": {
+              "seconds": {
+                "type": "number"
+              },
+              "formatted": {
+                "type": "string"
+              }
+            }
+          },
+          "system": {
+            "type": "object"
+          },
+          "process": {
+            "type": "object"
+          },
+          "dependencies": {
+            "type": "object"
+          },
+          "workerPool": {
+            "type": "object"
+          },
+          "circuitBreaker": {
+            "type": "object"
+          },
+          "config": {
+            "type": "object"
+          }
+        }
+      },
+      "SizeRequest": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "YouTube video URL",
+            "example": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+          },
+          "duration_hint": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 86400,
+            "description": "Optional duration hint in seconds to optimize yt-dlp calls",
+            "example": 213
+          }
+        }
+      },
+      "SizeResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": true
+          },
+          "bytes": {
+            "type": "object",
+            "description": "Size in bytes for each resolution",
+            "properties": {
+              "s144p": {
+                "type": "number",
+                "nullable": true
+              },
+              "s240p": {
+                "type": "number",
+                "nullable": true
+              },
+              "s360p": {
+                "type": "number",
+                "nullable": true
+              },
+              "s480p": {
+                "type": "number",
+                "nullable": true
+              },
+              "s720p": {
+                "type": "number",
+                "nullable": true
+              },
+              "s1080p": {
+                "type": "number",
+                "nullable": true
+              },
+              "s1440p": {
+                "type": "number",
+                "nullable": true
+              }
+            }
+          },
+          "human": {
+            "type": "object",
+            "description": "Human-readable sizes",
+            "properties": {
+              "s144p": {
+                "type": "string",
+                "nullable": true,
+                "example": "5.23 MB"
+              },
+              "s240p": {
+                "type": "string",
+                "nullable": true
+              },
+              "s360p": {
+                "type": "string",
+                "nullable": true
+              },
+              "s480p": {
+                "type": "string",
+                "nullable": true
+              },
+              "s720p": {
+                "type": "string",
+                "nullable": true,
+                "example": "45.67 MB"
+              },
+              "s1080p": {
+                "type": "string",
+                "nullable": true,
+                "example": "89.32 MB"
+              },
+              "s1440p": {
+                "type": "string",
+                "nullable": true
+              },
+              "duration": {
+                "type": "string",
+                "nullable": true,
+                "example": "3:33"
+              }
+            }
+          },
+          "duration": {
+            "type": "number",
+            "description": "Video duration in seconds",
+            "example": 213
+          }
+        }
+      },
+      "MetricsResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workerPool": {
+            "type": "object",
+            "properties": {
+              "totalTasks": {
+                "type": "number"
+              },
+              "completedTasks": {
+                "type": "number"
+              },
+              "failedTasks": {
+                "type": "number"
+              },
+              "activeWorkers": {
+                "type": "number"
+              },
+              "queueLength": {
+                "type": "number"
+              },
+              "peakWorkers": {
+                "type": "number"
+              }
+            }
+          },
+          "circuitBreaker": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": ["CLOSED", "OPEN", "HALF_OPEN"]
+              },
+              "failures": {
+                "type": "number"
+              },
+              "successes": {
+                "type": "number"
+              },
+              "stats": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "DocsResponse": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "endpoints": {
+            "type": "object"
+          },
+          "authentication": {
+            "type": "string"
+          },
+          "rateLimit": {
+            "type": "string"
+          },
+          "features": {
+            "type": "object"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "example": "Invalid YouTube URL"
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Request correlation ID for debugging",
+            "example": "req_1704067200000_abc123"
+          }
+        }
+      }
+    }
+  }
+}

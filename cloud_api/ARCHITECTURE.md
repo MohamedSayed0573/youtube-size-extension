@@ -10,10 +10,10 @@ Non-blocking, fault-tolerant Node.js API for YouTube video size extraction using
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Express HTTP Server                   │
-│  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐  │
+│                    Express HTTP Server                  │
+│  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐   │
 │  │  API Routes  │  │ Rate Limiter│  │ Auth Middleware│  │
-│  └──────────────┘  └─────────────┘  └───────────────┘  │
+│  └──────────────┘  └─────────────┘  └───────────────┘   │
 └────────────┬────────────────────────────────────────────┘
              │
              ▼
@@ -43,6 +43,7 @@ Non-blocking, fault-tolerant Node.js API for YouTube video size extraction using
 **Solution:** Worker threads execute yt-dlp in parallel
 
 **Benefits:**
+
 - ✅ Non-blocking: Main thread handles HTTP while workers execute yt-dlp
 - ✅ Scalability: Auto-scales from 2 to 10 workers based on load
 - ✅ Fault isolation: Worker crash doesn't kill main process
@@ -52,17 +53,17 @@ Non-blocking, fault-tolerant Node.js API for YouTube video size extraction using
 
 ```javascript
 const pool = new WorkerPool({
-  minWorkers: 2,        // Always active
-  maxWorkers: 10,       // Scale up under load
-  taskTimeout: 30000,   // 30s per task
-  maxTasksPerWorker: 100 // Recycle to prevent memory leaks
+    minWorkers: 2, // Always active
+    maxWorkers: 10, // Scale up under load
+    taskTimeout: 30000, // 30s per task
+    maxTasksPerWorker: 100, // Recycle to prevent memory leaks
 });
 
 // Execute task (queues if all workers busy)
 const result = await pool.execute({
-  url: 'https://youtube.com/watch?v=xxx',
-  timeout: 25000,
-  maxBuffer: 10485760
+    url: "https://youtube.com/watch?v=xxx",
+    timeout: 25000,
+    maxBuffer: 10485760,
 });
 ```
 
@@ -73,11 +74,13 @@ const result = await pool.execute({
 **Solution:** Fail-fast when error rate exceeds threshold
 
 **States:**
+
 - **CLOSED** (normal): All requests pass through
 - **OPEN** (failing): Reject all requests immediately (no wasted resources)
 - **HALF_OPEN** (testing): Allow limited requests to test recovery
 
 **Thresholds:**
+
 - Opens after **5 failures** in **10 requests**
 - Tests recovery after **60s cooldown**
 - Closes after **2 consecutive successes**
@@ -86,27 +89,28 @@ const result = await pool.execute({
 
 ```javascript
 const breaker = new CircuitBreaker({
-  failureThreshold: 5,    // Open after 5 failures
-  successThreshold: 2,    // Close after 2 successes
-  timeout: 60000,         // 1 minute cooldown
-  volumeThreshold: 10     // Min requests before evaluating
+    failureThreshold: 5, // Open after 5 failures
+    successThreshold: 2, // Close after 2 successes
+    timeout: 60000, // 1 minute cooldown
+    volumeThreshold: 10, // Min requests before evaluating
 });
 
 // Execute with circuit protection
 const data = await breaker.execute(async () => {
-  return await workerPool.execute({ url, timeout, maxBuffer });
+    return await workerPool.execute({ url, timeout, maxBuffer });
 });
 ```
 
 **Events:**
+
 ```javascript
-breaker.on('open', () => {
-  logger.error('Circuit opened - service degraded');
-  // Alert ops team
+breaker.on("open", () => {
+    logger.error("Circuit opened - service degraded");
+    // Alert ops team
 });
 
-breaker.on('closed', () => {
-  logger.info('Circuit closed - service recovered');
+breaker.on("closed", () => {
+    logger.info("Circuit closed - service recovered");
 });
 ```
 
@@ -115,9 +119,9 @@ breaker.on('closed', () => {
 ### Core
 
 - **POST /api/v1/size** - Extract video sizes
-  - Request: `{ url: string, duration_hint?: number }`
-  - Response: `{ ok: boolean, bytes: Object, human: Object, duration: number }`
-  
+    - Request: `{ url: string, duration_hint?: number }`
+    - Response: `{ ok: boolean, bytes: Object, human: Object, duration: number }`
+
 ### Monitoring
 
 - **GET /health** - System health + worker pool + circuit breaker status
@@ -199,25 +203,26 @@ curl http://localhost:3000/api/v1/metrics
 ```
 
 Response:
+
 ```json
 {
-  "workerPool": {
-    "totalTasks": 1532,
-    "completedTasks": 1498,
-    "failedTasks": 34,
-    "activeWorkers": 4,
-    "queueLength": 0,
-    "peakWorkers": 10
-  },
-  "circuitBreaker": {
-    "state": "CLOSED",
-    "failures": 1,
-    "successes": 150,
-    "stats": {
-      "totalRequests": 1532,
-      "rejectedRequests": 0
+    "workerPool": {
+        "totalTasks": 1532,
+        "completedTasks": 1498,
+        "failedTasks": 34,
+        "activeWorkers": 4,
+        "queueLength": 0,
+        "peakWorkers": 10
+    },
+    "circuitBreaker": {
+        "state": "CLOSED",
+        "failures": 1,
+        "successes": 150,
+        "stats": {
+            "totalRequests": 1532,
+            "rejectedRequests": 0
+        }
     }
-  }
 }
 ```
 
@@ -228,6 +233,7 @@ curl http://localhost:3000/health
 ```
 
 Status codes:
+
 - **healthy**: All systems operational
 - **degraded**: yt-dlp issues OR circuit HALF_OPEN
 - **unhealthy**: yt-dlp unavailable AND (circuit OPEN OR no workers)
@@ -235,6 +241,7 @@ Status codes:
 ### Sentry Integration
 
 All errors automatically sent to Sentry:
+
 - Unhandled exceptions
 - Circuit breaker trips
 - Worker failures
@@ -256,6 +263,7 @@ npm run test:ci
 ```
 
 Test suites:
+
 - **server.test.js** - API endpoints (21 tests)
 - **worker-pool.test.js** - Worker pool + circuit breaker (27 tests)
 
@@ -270,6 +278,7 @@ Coverage: 80%+ (statements, functions, lines)
 **Cause:** All workers busy, requests queuing
 
 **Solution:**
+
 - Increase `MAX_WORKERS` (default: 10)
 - Reduce `YTDLP_TIMEOUT` (default: 25s)
 - Scale horizontally (multiple instances)
@@ -279,11 +288,13 @@ Coverage: 80%+ (statements, functions, lines)
 **Symptom:** Circuit breaker state = OPEN in `/health`
 
 **Causes:**
+
 - yt-dlp rate limited by YouTube
 - Network issues
 - yt-dlp not installed or outdated
 
 **Solutions:**
+
 - Check `docker logs` or `stderr` for yt-dlp errors
 - Update yt-dlp: `pip install -U yt-dlp`
 - Reduce request rate
@@ -296,6 +307,7 @@ Coverage: 80%+ (statements, functions, lines)
 **Cause:** Workers not recycling
 
 **Solution:** Workers auto-recycle after 100 tasks. If issue persists:
+
 - Reduce `maxTasksPerWorker` in `worker-pool.js`
 - Restart workers manually via admin endpoint (future feature)
 
@@ -303,19 +315,20 @@ Coverage: 80%+ (statements, functions, lines)
 
 **Benchmarks** (yt-dlp installed, 4 CPU cores, 8 GB RAM):
 
-| Metric | Value |
-|--------|-------|
-| Requests/sec | 20-30 |
-| Avg latency | 800-1500 ms |
-| P95 latency | 2000 ms |
-| P99 latency | 3000 ms |
+| Metric             | Value            |
+| ------------------ | ---------------- |
+| Requests/sec       | 20-30            |
+| Avg latency        | 800-1500 ms      |
+| P95 latency        | 2000 ms          |
+| P99 latency        | 3000 ms          |
 | Concurrent workers | 4-6 avg, 10 peak |
-| Memory usage | 300-500 MB |
-| CPU usage | 40-60% |
+| Memory usage       | 300-500 MB       |
+| CPU usage          | 40-60%           |
 
 **Bottleneck:** yt-dlp execution time (800-1500 ms)
 
 **Optimization tips:**
+
 - Use `duration_hint` to skip redundant metadata calls
 - Enable client-side caching (extension handles this)
 - Deploy multiple instances behind load balancer
@@ -328,7 +341,7 @@ Coverage: 80%+ (statements, functions, lines)
 ✅ **Optional API key auth** - X-API-Key header  
 ✅ **CORS restrictions** - Configurable origins  
 ✅ **Request timeouts** - 25s yt-dlp, 30s task  
-✅ **Graceful shutdown** - Waits for active tasks  
+✅ **Graceful shutdown** - Waits for active tasks
 
 ## Development
 
@@ -351,17 +364,17 @@ npm test
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `server.js` | Main HTTP server, routes, middleware |
-| `worker-pool.js` | Worker thread manager, queue, scaling |
-| `ytdlp-worker.js` | Worker thread code, yt-dlp execution |
-| `circuit-breaker.js` | Fault tolerance, state management |
-| `instrument.js` | Sentry initialization |
-| `tests/server.test.js` | API endpoint tests |
-| `tests/worker-pool.test.js` | Worker pool + circuit breaker tests |
-| `Dockerfile` | Container image |
-| `package.json` | Dependencies, scripts |
+| File                        | Purpose                               |
+| --------------------------- | ------------------------------------- |
+| `server.js`                 | Main HTTP server, routes, middleware  |
+| `worker-pool.js`            | Worker thread manager, queue, scaling |
+| `ytdlp-worker.js`           | Worker thread code, yt-dlp execution  |
+| `circuit-breaker.js`        | Fault tolerance, state management     |
+| `instrument.js`             | Sentry initialization                 |
+| `tests/server.test.js`      | API endpoint tests                    |
+| `tests/worker-pool.test.js` | Worker pool + circuit breaker tests   |
+| `Dockerfile`                | Container image                       |
+| `package.json`              | Dependencies, scripts                 |
 
 ## License
 

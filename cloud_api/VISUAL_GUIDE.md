@@ -175,6 +175,7 @@
 ## Key Benefits
 
 ### 1. Non-Blocking Architecture
+
 ```
 BEFORE:  Request A ──→ [yt-dlp 1.5s] ──→ Response
          Request B ──X   BLOCKED
@@ -187,6 +188,7 @@ AFTER:   Request A ──→ [Worker 1: yt-dlp] ──→ Response
 ```
 
 ### 2. Fault Tolerance
+
 ```
 BEFORE:  Errors cascade → Server overload → Downtime
 
@@ -200,6 +202,7 @@ AFTER:   Circuit breaker detects failures
 ```
 
 ### 3. Auto-Scaling
+
 ```
 Low Load:    [Worker 1] [Worker 2]  (2 workers minimum)
 
@@ -213,6 +216,7 @@ Idle:        [Worker 1] [Worker 2]  (Scales back down)
 ```
 
 ### 4. Resource Management
+
 ```
 Worker Lifecycle:
   Create → Execute 100 tasks → Recycle → Create new worker
@@ -228,6 +232,7 @@ Graceful Shutdown:
 ## Real-World Scenarios
 
 ### Scenario 1: Normal Load
+
 ```
 Requests:  5-10 per second
 Workers:   2-4 active
@@ -237,6 +242,7 @@ Queue:     Empty
 ```
 
 ### Scenario 2: Traffic Spike
+
 ```
 Requests:  50 per second
 Workers:   10 active (max capacity)
@@ -246,6 +252,7 @@ Queue:     10-20 requests queued
 ```
 
 ### Scenario 3: yt-dlp Failures
+
 ```
 Failures:  5 failures in 10 requests
 Workers:   4 active
@@ -255,6 +262,7 @@ Recovery:  60s cooldown → HALF_OPEN → Test recovery
 ```
 
 ### Scenario 4: Recovery
+
 ```
 Circuit:   HALF_OPEN
 Test:      2 successful requests
@@ -264,20 +272,21 @@ Workers:   Resume normal operation
 
 ## Comparison: Before vs After
 
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| **Throughput** | 1-2 req/s | 20-30 req/s | **10-15x** |
-| **Concurrency** | 1 request | 10 requests | **10x** |
-| **Blocking** | Yes | No | **✅** |
-| **Fault Tolerance** | None | Circuit breaker | **✅** |
-| **Auto-Recovery** | Manual | Automatic (60s) | **✅** |
-| **Monitoring** | Basic | Real-time metrics | **✅** |
-| **Scalability** | Fixed | Auto-scaling (2-10) | **✅** |
-| **Resource Mgmt** | Manual | Auto-recycling | **✅** |
+| Metric              | Before    | After               | Improvement |
+| ------------------- | --------- | ------------------- | ----------- |
+| **Throughput**      | 1-2 req/s | 20-30 req/s         | **10-15x**  |
+| **Concurrency**     | 1 request | 10 requests         | **10x**     |
+| **Blocking**        | Yes       | No                  | **✅**      |
+| **Fault Tolerance** | None      | Circuit breaker     | **✅**      |
+| **Auto-Recovery**   | Manual    | Automatic (60s)     | **✅**      |
+| **Monitoring**      | Basic     | Real-time metrics   | **✅**      |
+| **Scalability**     | Fixed     | Auto-scaling (2-10) | **✅**      |
+| **Resource Mgmt**   | Manual    | Auto-recycling      | **✅**      |
 
 ## Usage Examples
 
 ### Normal Request
+
 ```bash
 curl -X POST http://localhost:3000/api/v1/size \
   -H "Content-Type: application/json" \
@@ -293,6 +302,7 @@ curl -X POST http://localhost:3000/api/v1/size \
 ```
 
 ### Circuit Open (Failures)
+
 ```bash
 curl -X POST http://localhost:3000/api/v1/size \
   -H "Content-Type: application/json" \
@@ -307,6 +317,7 @@ curl -X POST http://localhost:3000/api/v1/size \
 ```
 
 ### Monitoring
+
 ```bash
 # Real-time metrics
 curl http://localhost:3000/api/v1/metrics

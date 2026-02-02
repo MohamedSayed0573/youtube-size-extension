@@ -1,3 +1,4 @@
+DO NOT CREATE ANY SUMMARY DOCUMENT UNLESS YOU WERE ASKED TO
 # YouTube Size Extension - AI Agent Instructions
 
 ## Architecture Overview
@@ -15,7 +16,8 @@ popup.js
 
 ### Cloud API Architecture (Non-Blocking)
 
-**Worker Pool Pattern**: yt-dlp executes in separate worker threads to prevent blocking Node.js event loop
+**Worker Pool Pattern**: yt-dlp executes in separate worker threads to prevent blocking Node.js
+event loop
 
 - **Main Thread**: Express HTTP server, handles requests, manages queue
 - **Worker Threads** (2-10): Execute yt-dlp subprocess, return JSON metadata
@@ -30,6 +32,7 @@ popup.js
 - **Fail-fast**: Rejects requests immediately when OPEN (no blocking)
 
 **Files**:
+
 - `server.js`: Main HTTP server, integrates worker pool + circuit breaker
 - `worker-pool.js`: Manages worker threads, queue, auto-scaling
 - `ytdlp-worker.js`: Worker thread code, executes yt-dlp subprocess
