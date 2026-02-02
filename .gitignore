@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Testing
+coverage/
+*.lcov
+.nyc_output/
+junit.xml
+
+# Build outputs
+dist/
+build/
+*.crx
+*.pem
+*.zip
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.pytest_cache/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
