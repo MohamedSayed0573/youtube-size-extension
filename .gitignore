@@ -55,3 +55,16 @@ ENV/
 tmp/
 temp/
 *.tmp
+
+# Terraform (do not commit!)
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+
+# AWS CLI
+aws/
+awscliv2.zip
+
+# Large files
+*.md
