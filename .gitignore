@@ -3,7 +3,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+# Keep package-lock.json for CI/CD reproducibility
+# package-lock.json
 yarn.lock
 
 # Testing
