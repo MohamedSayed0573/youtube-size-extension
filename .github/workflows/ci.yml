@@ -59,9 +59,9 @@ jobs:
               working-directory: ./cloud_api
               run: npm ci
 
-            - name: Run Cloud API tests
+            - name: Run Cloud API tests (all)
               working-directory: ./cloud_api
-              run: npm test
+              run: npm run test:all
               env:
                   NODE_ENV: test
                   PORT: 3000

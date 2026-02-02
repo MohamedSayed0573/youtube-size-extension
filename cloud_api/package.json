@@ -7,8 +7,9 @@
     "start": "node server.js",
     "dev": "NODE_ENV=development node server.js",
     "prod": "NODE_ENV=production node server.js",
-    "test": "jest --coverage --detectOpenHandles --forceExit",
-    "test:watch": "jest --watch",
+    "test": "jest --coverage --detectOpenHandles --forceExit --testPathIgnorePatterns=integration.test.js",
+    "test:watch": "jest --watch --testPathIgnorePatterns=integration.test.js",
+    "test:all": "jest --coverage --detectOpenHandles --forceExit",
     "test:ci": "jest --ci --coverage --maxWorkers=2"
   },
   "keywords": [
