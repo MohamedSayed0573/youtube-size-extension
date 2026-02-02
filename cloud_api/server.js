@@ -21,7 +21,7 @@
  *
  * @fileoverview Cloud API server for yt-dlp size extraction
  * @author YouTube Size Extension Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 const express = require("express");
@@ -29,38 +29,190 @@ const cors = require("cors");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 const rateLimit = require("express-rate-limit");
+const os = require("os");
+const { z } = require("zod");
 
 const execFileAsync = promisify(execFile);
 
+// ============================================
+// Environment Configuration with Zod Validation
+// ============================================
+
+const envSchema = z.object({
+    // Server configuration
+    PORT: z.string().default("3000").transform(Number),
+    NODE_ENV: z.enum(["development", "staging", "production"]).default("development"),
+    
+    // Authentication
+    API_KEY: z.string().optional().default(""),
+    REQUIRE_AUTH: z.string().transform((val) => val === "true").default("false"),
+    
+    // CORS configuration
+    ALLOWED_ORIGINS: z.string().optional().default("*"),
+    
+    // Rate limiting
+    RATE_LIMIT_WINDOW_MS: z.string().default("60000").transform(Number),
+    RATE_LIMIT_MAX_REQUESTS: z.string().default("20").transform(Number),
+    RATE_LIMIT_HEALTH_MAX: z.string().default("100").transform(Number),
+    
+    // yt-dlp configuration
+    YTDLP_TIMEOUT: z.string().default("25000").transform(Number),
+    YTDLP_MAX_BUFFER: z.string().default("10485760").transform(Number),
+    
+    // Feature flags
+    ENABLE_HEALTH_DETAILS: z.string().transform((val) => val !== "false").default("true"),
+    ENABLE_METRICS: z.string().transform((val) => val !== "false").default("true"),
+}).refine(
+    (data) => !data.REQUIRE_AUTH || data.API_KEY !== "",
+    {
+        message: "API_KEY must be set when REQUIRE_AUTH is true",
+        path: ["API_KEY"],
+    }
+);
+
+// Validate and parse environment variables
+let CONFIG;
+try {
+    const parsed = envSchema.safeParse(process.env);
+    
+    if (!parsed.success) {
+        console.error("❌ Environment configuration validation failed:");
+        parsed.error.issues.forEach((issue) => {
+            console.error(`  - ${issue.path.join(".")}: ${issue.message}`);
+        });
+        process.exit(1);
+    }
+    
+    CONFIG = {
+        ...parsed.data,
+        API_VERSION: "v1",
+        ALLOWED_ORIGINS: parsed.data.ALLOWED_ORIGINS === "*" 
+            ? "*" 
+            : parsed.data.ALLOWED_ORIGINS.split(",").map(s => s.trim()),
+    };
+    
+    console.log("✅ Environment configuration validated successfully");
+} catch (error) {
+    console.error("❌ Failed to parse environment configuration:", error.message);
+    process.exit(1);
+}
+
 const app = express();
-const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.API_KEY || ""; // Set via environment variable
-const REQUIRE_AUTH = process.env.REQUIRE_AUTH === "true"; // Enable auth in production
+
+// ============================================
+// Metrics Tracking
+// ============================================
+const metrics = {
+    startTime: Date.now(),
+    requests: {
+        total: 0,
+        success: 0,
+        failed: 0,
+        byEndpoint: {},
+    },
+    errors: {
+        validation: 0,
+        ytdlp: 0,
+        timeout: 0,
+        auth: 0,
+        rateLimit: 0,
+    },
+    performance: {
+        avgResponseTime: 0,
+        minResponseTime: Infinity,
+        maxResponseTime: 0,
+        totalResponseTime: 0,
+    },
+};
+
+/**
+ * Middleware to track request metrics
+ */
+function metricsMiddleware(req, res, next) {
+    if (!CONFIG.ENABLE_METRICS) return next();
+    
+    const startTime = Date.now();
+    const endpoint = `${req.method} ${req.path}`;
+    
+    metrics.requests.total++;
+    metrics.requests.byEndpoint[endpoint] = 
+        (metrics.requests.byEndpoint[endpoint] || 0) + 1;
+    
+    // Capture response
+    const originalSend = res.send;
+    res.send = function (data) {
+        const duration = Date.now() - startTime;
+        
+        // Update performance metrics
+        metrics.performance.totalResponseTime += duration;
+        metrics.performance.avgResponseTime = 
+            metrics.performance.totalResponseTime / metrics.requests.total;
+        metrics.performance.minResponseTime = Math.min(
+            metrics.performance.minResponseTime,
+            duration
+        );
+        metrics.performance.maxResponseTime = Math.max(
+            metrics.performance.maxResponseTime,
+            duration
+        );
+        
+        // Track success/failure
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+            metrics.requests.success++;
+        } else {
+            metrics.requests.failed++;
+            
+            // Track error types
+            if (res.statusCode === 401) metrics.errors.auth++;
+            if (res.statusCode === 429) metrics.errors.rateLimit++;
+            if (res.statusCode === 400) metrics.errors.validation++;
+            if (res.statusCode === 502 || res.statusCode === 504) {
+                if (res.statusCode === 504) metrics.errors.timeout++;
+                else metrics.errors.ytdlp++;
+            }
+        }
+        
+        return originalSend.call(this, data);
+    };
+    
+    next();
+}
+
+// ============================================
+// Middleware Configuration
+// ============================================
 
 // Enable CORS with restrictions (configure for production)
 const corsOptions = {
-    origin: process.env.ALLOWED_ORIGINS
-        ? process.env.ALLOWED_ORIGINS.split(",")
-        : "*", // In production, specify extension IDs
+    origin: CONFIG.ALLOWED_ORIGINS,
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type", "X-API-Key"],
+    credentials: true,
 };
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "10kb" })); // Limit request body size
+app.use(metricsMiddleware); // Track metrics
 
-// Rate limiting: 20 requests per minute per IP
-const limiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    max: 20,
+// Rate limiting configuration
+const apiLimiter = rateLimit({
+    windowMs: CONFIG.RATE_LIMIT_WINDOW_MS,
+    max: CONFIG.RATE_LIMIT_MAX_REQUESTS,
     message: {
         ok: false,
         error: "Too many requests, please try again later.",
     },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => CONFIG.NODE_ENV === "development" && !CONFIG.REQUIRE_AUTH,
 });
 
-app.use("/size", limiter);
+// Separate rate limiter for health endpoints (more permissive)
+const healthLimiter = rateLimit({
+    windowMs: CONFIG.RATE_LIMIT_WINDOW_MS,
+    max: CONFIG.RATE_LIMIT_HEALTH_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
 // Map of interesting format ids by resolution
 const VIDEO_FORMAT_IDS = {
@@ -85,13 +237,13 @@ const VIDEO_FORMAT_IDS = {
  */
 function authenticateApiKey(req, res, next) {
     // Skip auth if not required (development)
-    if (!REQUIRE_AUTH) {
+    if (!CONFIG.REQUIRE_AUTH) {
         return next();
     }
 
     const apiKey = req.headers["x-api-key"];
 
-    if (!apiKey || apiKey !== API_KEY) {
+    if (!apiKey || apiKey !== CONFIG.API_KEY) {
         return res.status(401).json({
             ok: false,
             error: "Unauthorized. Valid API key required.",
@@ -259,8 +411,8 @@ async function extractInfo(url) {
 
     try {
         const { stdout, stderr } = await execFileAsync("yt-dlp", args, {
-            timeout: 25000,
-            maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+            timeout: CONFIG.YTDLP_TIMEOUT,
+            maxBuffer: CONFIG.YTDLP_MAX_BUFFER,
             windowsHide: true, // Hide console window on Windows
         });
 
@@ -406,13 +558,223 @@ function computeSizes(meta, durationHint) {
     };
 }
 
-// Health check endpoint
+// ============================================
+// API Versioning & Health Endpoints
+// ============================================
+
+// Root endpoint
 app.get("/", (req, res) => {
-    res.json({ ok: true, service: "ytdlp-sizer-api" });
+    res.json({
+        ok: true,
+        service: "ytdlp-sizer-api",
+        version: CONFIG.API_VERSION,
+        status: "running",
+        documentation: "/api/v1/docs",
+    });
 });
 
-// Main size extraction endpoint
-app.post("/size", authenticateApiKey, async (req, res) => {
+/**
+ * Basic health check endpoint
+ * Returns 200 if service is running
+ */
+app.get("/health", healthLimiter, (req, res) => {
+    res.json({
+        ok: true,
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+    });
+});
+
+/**
+ * Detailed health check endpoint
+ * Returns system metrics, yt-dlp version, and service stats
+ */
+app.get("/health/detailed", healthLimiter, async (req, res) => {
+    if (!CONFIG.ENABLE_HEALTH_DETAILS) {
+        return res.status(403).json({
+            ok: false,
+            error: "Detailed health metrics are disabled",
+        });
+    }
+
+    try {
+        // Check yt-dlp availability and version
+        let ytdlpVersion = "unknown";
+        let ytdlpAvailable = false;
+        try {
+            const { stdout } = await execFileAsync("yt-dlp", ["--version"], {
+                timeout: 5000,
+            });
+            ytdlpVersion = stdout.trim();
+            ytdlpAvailable = true;
+        } catch (error) {
+            console.error("yt-dlp not available:", error.message);
+        }
+
+        // System metrics
+        const uptime = Math.floor((Date.now() - metrics.startTime) / 1000);
+        const memUsage = process.memoryUsage();
+
+        res.json({
+            ok: true,
+            status: ytdlpAvailable ? "healthy" : "degraded",
+            timestamp: new Date().toISOString(),
+            version: CONFIG.API_VERSION,
+            uptime: {
+                seconds: uptime,
+                formatted: formatUptime(uptime),
+            },
+            system: {
+                platform: os.platform(),
+                arch: os.arch(),
+                nodeVersion: process.version,
+                cpus: os.cpus().length,
+                memory: {
+                    total: os.totalmem(),
+                    free: os.freemem(),
+                    used: os.totalmem() - os.freemem(),
+                    usagePercent: ((1 - os.freemem() / os.totalmem()) * 100).toFixed(2),
+                },
+                loadAverage: os.loadavg(),
+            },
+            process: {
+                pid: process.pid,
+                memory: {
+                    rss: memUsage.rss,
+                    heapTotal: memUsage.heapTotal,
+                    heapUsed: memUsage.heapUsed,
+                    external: memUsage.external,
+                },
+                uptime: process.uptime(),
+            },
+            dependencies: {
+                ytdlp: {
+                    available: ytdlpAvailable,
+                    version: ytdlpVersion,
+                },
+            },
+            config: {
+                environment: CONFIG.NODE_ENV,
+                authEnabled: CONFIG.REQUIRE_AUTH,
+                corsOrigins: CONFIG.ALLOWED_ORIGINS === "*" 
+                    ? "all" 
+                    : CONFIG.ALLOWED_ORIGINS.length,
+                rateLimit: {
+                    windowMs: CONFIG.RATE_LIMIT_WINDOW_MS,
+                    maxRequests: CONFIG.RATE_LIMIT_MAX_REQUESTS,
+                },
+            },
+        });
+    } catch (error) {
+        res.status(500).json({
+            ok: false,
+            status: "unhealthy",
+            error: error.message,
+        });
+    }
+});
+
+/**
+ * Metrics endpoint
+ * Returns request statistics and performance metrics
+ */
+app.get("/health/metrics", healthLimiter, (req, res) => {
+    if (!CONFIG.ENABLE_METRICS) {
+        return res.status(403).json({
+            ok: false,
+            error: "Metrics are disabled",
+        });
+    }
+
+    const uptime = Math.floor((Date.now() - metrics.startTime) / 1000);
+
+    res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        uptime: {
+            seconds: uptime,
+            formatted: formatUptime(uptime),
+        },
+        requests: {
+            total: metrics.requests.total,
+            success: metrics.requests.success,
+            failed: metrics.requests.failed,
+            successRate: metrics.requests.total > 0
+                ? ((metrics.requests.success / metrics.requests.total) * 100).toFixed(2) + "%"
+                : "N/A",
+            byEndpoint: metrics.requests.byEndpoint,
+        },
+        errors: metrics.errors,
+        performance: {
+            avgResponseTime: Math.round(metrics.performance.avgResponseTime) + "ms",
+            minResponseTime: metrics.performance.minResponseTime === Infinity
+                ? "N/A"
+                : metrics.performance.minResponseTime + "ms",
+            maxResponseTime: metrics.performance.maxResponseTime + "ms",
+        },
+    });
+});
+
+/**
+ * Readiness probe endpoint
+ * Checks if service is ready to accept requests
+ */
+app.get("/health/ready", healthLimiter, async (req, res) => {
+    try {
+        // Check if yt-dlp is available
+        await execFileAsync("yt-dlp", ["--version"], { timeout: 5000 });
+        res.json({ ok: true, ready: true });
+    } catch (error) {
+        res.status(503).json({
+            ok: false,
+            ready: false,
+            reason: "yt-dlp not available",
+        });
+    }
+});
+
+/**
+ * Liveness probe endpoint
+ * Simple check that service is alive
+ */
+app.get("/health/live", healthLimiter, (req, res) => {
+    res.json({ ok: true, alive: true });
+});
+
+/**
+ * API documentation endpoint
+ */
+app.get("/api/v1/docs", (req, res) => {
+    res.json({
+        version: CONFIG.API_VERSION,
+        service: "ytdlp-sizer-api",
+        description: "API for extracting YouTube video size information",
+        endpoints: {
+            health: {
+                "GET /": "Root endpoint with basic info",
+                "GET /health": "Basic health check",
+                "GET /health/detailed": "Detailed health metrics",
+                "GET /health/metrics": "Request and performance metrics",
+                "GET /health/ready": "Readiness probe",
+                "GET /health/live": "Liveness probe",
+            },
+            api: {
+                "POST /api/v1/size": "Extract video size information",
+            },
+        },
+        authentication: CONFIG.REQUIRE_AUTH
+            ? "Required: X-API-Key header"
+            : "Optional",
+        rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS} requests per ${CONFIG.RATE_LIMIT_WINDOW_MS / 1000} seconds`,
+    });
+});
+
+// ============================================
+// API v1 Endpoints
+// ============================================
+
+// Main size extraction endpoint (v1)
+app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
     try {
         const { url, duration_hint } = req.body;
 
@@ -461,7 +823,90 @@ app.post("/size", authenticateApiKey, async (req, res) => {
     }
 });
 
-// Error handler
+// Legacy endpoint for backward compatibility (deprecated)
+app.post("/size", apiLimiter, authenticateApiKey, async (req, res) => {
+    try {
+        const { url, duration_hint } = req.body;
+
+        if (!url) {
+            return res
+                .status(400)
+                .json({ ok: false, error: "URL is required" });
+        }
+
+        if (!isValidYouTubeUrl(url)) {
+            return res.status(400).json({
+                ok: false,
+                error: "Invalid or unsafe YouTube URL",
+            });
+        }
+
+        if (
+            duration_hint !== undefined &&
+            (typeof duration_hint !== "number" ||
+                !isFinite(duration_hint) ||
+                duration_hint < 0 ||
+                duration_hint > 86400)
+        ) {
+            return res.status(400).json({
+                ok: false,
+                error: "Invalid duration_hint (must be 0-86400 seconds)",
+            });
+        }
+
+        const meta = await extractInfo(url);
+        const result = computeSizes(meta, duration_hint);
+
+        // Add deprecation warning
+        result.warning = "This endpoint is deprecated. Please use /api/v1/size instead.";
+        res.json(result);
+    } catch (error) {
+        console.error("Error processing request:", error);
+        res.status(error.message.includes("timed out") ? 504 : 502).json({
+            ok: false,
+            error: error.message,
+        });
+    }
+});
+
+// ============================================
+// Utility Functions
+// ============================================
+
+/**
+ * Formats uptime in human-readable format
+ * @param {number} seconds - Uptime in seconds
+ * @returns {string} Formatted uptime
+ */
+function formatUptime(seconds) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+    return parts.join(" ");
+}
+
+// ============================================
+// Error Handlers
+// ============================================
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({
+        ok: false,
+        error: "Endpoint not found",
+        availableEndpoints: ["/", "/health", "/api/v1/size", "/api/v1/docs"],
+    });
+});
+
+// Global error handler
 app.use((err, req, res, next) => {
     console.error("Unhandled error:", err);
     res.status(500).json({
@@ -470,6 +915,26 @@ app.use((err, req, res, next) => {
     });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`ytdlp-sizer-api listening on port ${PORT}`);
+// ============================================
+// Server Startup
+// ============================================
+
+app.listen(CONFIG.PORT, "0.0.0.0", () => {
+    console.log(`┌${'─'.repeat(50)}┐`);
+    console.log(`│ ytdlp-sizer-api v${CONFIG.API_VERSION}${' '.repeat(31)}│`);
+    console.log(`├${'─'.repeat(50)}┤`);
+    console.log(`│ Status: Running${' '.repeat(33)}│`);
+    console.log(`│ Port: ${CONFIG.PORT}${' '.repeat(43 - CONFIG.PORT.toString().length)}│`);
+    console.log(`│ Environment: ${CONFIG.NODE_ENV}${' '.repeat(36 - CONFIG.NODE_ENV.length)}│`);
+    console.log(`│ Auth Required: ${CONFIG.REQUIRE_AUTH}${' '.repeat(32 - CONFIG.REQUIRE_AUTH.toString().length)}│`);
+    console.log(`│ Rate Limit: ${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min${' '.repeat(33 - CONFIG.RATE_LIMIT_MAX_REQUESTS.toString().length)}│`);
+    console.log(`├${'─'.repeat(50)}┤`);
+    console.log(`│ Endpoints:${' '.repeat(39)}│`);
+    console.log(`│   GET  /${' '.repeat(43)}│`);
+    console.log(`│   GET  /health${' '.repeat(35)}│`);
+    console.log(`│   GET  /health/detailed${' '.repeat(26)}│`);
+    console.log(`│   GET  /health/metrics${' '.repeat(27)}│`);
+    console.log(`│   POST /api/v1/size${' '.repeat(30)}│`);
+    console.log(`│   GET  /api/v1/docs${' '.repeat(30)}│`);
+    console.log(`└${'─'.repeat(50)}┘`);
 });
