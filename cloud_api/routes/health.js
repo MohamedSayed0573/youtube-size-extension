@@ -60,7 +60,7 @@ function createHealthRoutes(
                 ok: true,
                 redis: "connected",
                 latency: `${latency}ms`,
-                ready: redisReady(),
+                ready: redisReady,
             });
         } catch (error) {
             logger.error({ error: error.message }, "Redis health check failed");
@@ -80,21 +80,10 @@ function createHealthRoutes(
             const poolStats = workerPool.getStats();
             const breakerStatus = circuitBreaker.getStatus();
 
-            // Check yt-dlp availability
+            // Check yt-dlp availability by checking if it's in PATH
+            // Don't actually call it to keep health check fast
             let ytdlpVersion = "unknown";
-            let ytdlpAvailable = false;
-            try {
-                const result = await workerPool.execute({
-                    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-                    timeout: 5000,
-                    maxBuffer: 1024 * 1024,
-                    retryAttempt: 0,
-                });
-                ytdlpAvailable = true;
-                ytdlpVersion = "working";
-            } catch (error) {
-                logger.warn({ error: error.message }, "yt-dlp not available");
-            }
+            let ytdlpAvailable = ytdlpPath ? true : false;
 
             // Determine overall health status
             let overallStatus = "healthy";
@@ -155,7 +144,7 @@ function createHealthRoutes(
                     },
                     redis: {
                         enabled: config.REDIS_ENABLED,
-                        connected: redisReady(),
+                        connected: redisReady,
                         url: config.REDIS_URL
                             ? config.REDIS_URL.replace(/:[^:@]*@/, ":***@")
                             : "not configured",
