@@ -1,3 +1,23 @@
+/**
+ * Content Script for YouTube Size Extension
+ * 
+ * This script runs on all YouTube pages and is responsible for:
+ * - Detecting the currently playing video resolution and codec (itag)
+ * - Monitoring video metadata changes (resolution switches, quality changes)
+ * - Detecting SPA (Single Page Application) navigation events
+ * - Reporting duration hints to the background worker
+ * - Notifying background of page changes for auto-prefetch
+ * 
+ * The script uses a combination of:
+ * - Direct video element inspection (videoHeight, currentSrc)
+ * - YouTube-specific events (yt-navigate-finish, yt-page-data-updated)
+ * - Polling fallback for SPA navigation detection
+ * 
+ * @fileoverview Content script for detecting YouTube video metadata
+ * @author YouTube Size Extension Team
+ * @version 0.2.0
+ */
+
 (function() {
   // Detect current playing resolution on YouTube and send updates
   let lastLabel = null;
@@ -5,6 +25,12 @@
   let lastVideoId = null;
   let lastItag = null;
 
+  /**
+   * Checks if a URL is a valid YouTube video page
+   * 
+   * @param {string} url - The URL to validate
+   * @returns {boolean} True if URL is a YouTube video page
+   */
   function isYouTubeUrl(url) {
     try {
       const u = new URL(url);
@@ -16,6 +42,19 @@
     } catch (_) { return false; }
   }
 
+  /**
+   * Extracts the current video format itag from the video element's source URL
+   * 
+   * The itag parameter identifies the specific video codec and quality being played.
+   * Common itags:
+   * - 299: 1080p H.264
+   * - 303: 1080p VP9
+   * - 399: 1080p AV1
+   * - 308: 1440p VP9
+   * - 400: 1440p AV1
+   * 
+   * @returns {string|null} The itag string (e.g., "399") or null if not found
+   */
   function extractCurrentItag() {
     try {
       const v = getVideoEl();
@@ -30,6 +69,17 @@
     }
   }
 
+  /**
+   * Extracts the YouTube video ID from a URL
+   * 
+   * Handles multiple URL formats:
+   * - Standard watch URLs: /watch?v=VIDEO_ID
+   * - Short URLs: youtu.be/VIDEO_ID
+   * - Shorts URLs: /shorts/VIDEO_ID
+   * 
+   * @param {string} url - The YouTube URL to parse
+   * @returns {string|null} The 11-character video ID or null
+   */
   function extractVideoId(url) {
     try {
       const u = new URL(url);
@@ -44,6 +94,15 @@
     } catch (_) { return null; }
   }
 
+  /**
+   * Maps a video height (in pixels) to a standard resolution label
+   * 
+   * Uses nearest-match logic to map actual video heights to standard labels.
+   * For example, a 1088px height would map to "1080p".
+   * 
+   * @param {number} h - The video height in pixels
+   * @returns {string|null} Resolution label (e.g., "720p", "1080p") or null
+   */
   function mapHeightToLabel(h) {
     if (!h || !isFinite(h)) return null;
     const ladder = [144, 240, 360, 480, 720, 1080, 1440, 2160];
@@ -55,6 +114,14 @@
     return best + 'p';
   }
 
+  /**
+   * Locates the main YouTube video element on the page
+   * 
+   * Prefers YouTube's dedicated video.html5-main-video element, but falls back
+   * to any playing video element if needed.
+   * 
+   * @returns {HTMLVideoElement|null} The video element or null if not found
+   */
   function getVideoEl() {
     // Prefer YouTube's main video element
     const main = document.querySelector('ytd-player video.html5-main-video');
@@ -69,6 +136,20 @@
     return null;
   }
 
+  /**
+   * Reads current video metadata and notifies the background worker
+   * 
+   * Extracts:
+   * - Video resolution (height and label like "720p")
+   * - Current itag (codec identifier)
+   * - Video duration in seconds
+   * - Current URL and video ID
+   * 
+   * Implements debouncing to avoid sending duplicate messages when values haven't changed.
+   * 
+   * @param {boolean} [force=false] - If true, bypasses debouncing and always sends
+   * @returns {void}
+   */
   function readAndNotify(force=false) {
     if (!isYouTubeUrl(location.href)) return;
     const vid = getVideoEl();
@@ -102,6 +183,16 @@
   // Track URL changes without injecting inline scripts (CSP-safe)
   let lastHref = location.href;
   let urlPollId = null;
+  /**
+   * Starts a polling mechanism to detect URL changes in YouTube's SPA
+   * 
+   * YouTube is a Single Page Application that doesn't trigger full page reloads
+   * when navigating between videos. This poller detects location.href changes
+   * and triggers metadata updates.
+   * 
+   * @param {number} [intervalMs=1500] - Polling interval in milliseconds
+   * @returns {void}
+   */
   function startUrlPoller(intervalMs = 1500) {
     try { if (urlPollId) clearInterval(urlPollId); } catch (_) {}
     urlPollId = setInterval(() => {
@@ -112,6 +203,17 @@
     }, intervalMs);
   }
 
+  /**
+   * Sets up event listeners for YouTube's SPA navigation events
+   * 
+   * Listens to:
+   * - yt-navigate-finish: YouTube's custom navigation complete event
+   * - yt-page-data-updated: YouTube's data refresh event
+   * - popstate: Browser back/forward navigation
+   * - visibilitychange: Tab becomes visible again
+   * 
+   * @returns {void}
+   */
   function listenForSpaNavigations() {
     const onChange = (href) => {
       const h = href || location.href;
@@ -128,6 +230,17 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) onChange(location.href); }, true);
   }
 
+  /**
+   * Initial setup function that attaches event listeners to the video element
+   * 
+   * Monitors various video events to detect resolution changes:
+   * - loadedmetadata: Video metadata is loaded
+   * - loadeddata: Video data is loaded
+   * - resize: Video dimensions change
+   * - play/seeked: Quality may change during playback
+   * 
+   * @returns {void}
+   */
   function setup() {
     readAndNotify(true);
     const v = getVideoEl();

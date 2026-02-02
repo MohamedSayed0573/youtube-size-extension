@@ -1,13 +1,53 @@
 #!/usr/bin/env python3
+"""
+Native Messaging Host for YouTube Size Extension
+
+This Python script acts as a native messaging host that communicates with
+the browser extension using Chrome's native messaging protocol. It executes
+yt-dlp to extract video format and size information for YouTube videos.
+
+Key Features:
+- Native messaging protocol implementation (stdin/stdout)
+- yt-dlp integration for video metadata extraction
+- Multiple data extraction strategies:
+  1. JSON dump (-J) - comprehensive metadata including duration
+  2. Format list (-F) - fallback for size extraction
+  3. Duration fetch (--print) - separate duration query if needed
+- Support for duration hints to avoid redundant yt-dlp calls
+- Handles multiple resolutions (144p to 1440p)
+- Supports codec variants (H.264, VP9, AV1)
+
+Protocol:
+- Input: JSON message with 'url' and optional 'duration_hint'
+- Output: JSON response with size data for multiple resolutions
+
+Usage:
+    This script is invoked automatically by the browser extension.
+    It should not be run manually.
+
+Author: YouTube Size Extension Team
+Version: 0.2.0
+"""
+
 import sys
 import struct
 import json
 import subprocess
 import re
+import os
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-# Simple debug logger (stderr so it won't interfere with native messaging stdout)
+
 def _dbg(msg: str):
+    """Write debug message to stderr.
+    
+    Logs to stderr to avoid interfering with native messaging protocol
+    which uses stdout for communication.
+    
+    Args:
+        msg: The debug message to log
+    """
     try:
         sys.stderr.write(f"[host] {msg}\n")
         sys.stderr.flush()
@@ -17,6 +57,15 @@ def _dbg(msg: str):
 # Native messaging protocol helpers
 
 def read_message():
+    """Read a message from stdin using Chrome's native messaging protocol.
+    
+    The protocol uses:
+    - First 4 bytes: message length as uint32 (little-endian)
+    - Remaining bytes: UTF-8 encoded JSON message
+    
+    Returns:
+        dict: The parsed JSON message, or None if EOF or parse error
+    """
     raw_length = sys.stdin.buffer.read(4)
     if len(raw_length) == 0:
         return None
@@ -35,6 +84,13 @@ def read_message():
 
 
 def send_message(msg: dict):
+    """Send a message to stdout using Chrome's native messaging protocol.
+    
+    Encodes the message as JSON and prefixes it with a 4-byte length header.
+    
+    Args:
+        msg: Dictionary to send as JSON response
+    """
     try:
         encoded = json.dumps(msg).encode('utf-8')
     except Exception as e:
@@ -46,6 +102,17 @@ def send_message(msg: dict):
 
 
 def humanize_bytes(n: int) -> str:
+    """Convert bytes to human-readable format using decimal (SI) units.
+    
+    Uses 1000-based units (KB, MB, GB, TB) for consistency with
+    the JavaScript implementations.
+    
+    Args:
+        n: Number of bytes to format
+        
+    Returns:
+        Formatted string like "45.32 MB" or "N/A" if None
+    """
     if n is None:
         return 'N/A'
     # Use decimal (SI) units as requested: KB, MB, GB, TB
@@ -61,6 +128,14 @@ def humanize_bytes(n: int) -> str:
 
 
 def humanize_duration(seconds) -> str:
+    """Convert seconds to H:MM:SS or M:SS format.
+    
+    Args:
+        seconds: Duration in seconds (int or float)
+        
+    Returns:
+        Formatted string like "5:32" or "1:23:45", or None if invalid
+    """
     if seconds is None:
         return None
     try:
@@ -73,6 +148,49 @@ def humanize_duration(seconds) -> str:
     if h > 0:
         return f"{h:d}:{m:02d}:{sec:02d}"
     return f"{m:d}:{sec:02d}"
+
+
+# Resolve paths for a bundled yt-dlp for production reliability
+def _host_dir() -> Path:
+    """Get the directory containing this script or executable.
+    
+    Handles both normal Python execution and PyInstaller frozen executables.
+    
+    Returns:
+        Path to the directory containing the host script/executable
+    """
+    try:
+        if getattr(sys, 'frozen', False):  # PyInstaller
+            return Path(sys.executable).resolve().parent
+        return Path(__file__).resolve().parent
+    except Exception:
+        return Path('.')
+
+
+def find_yt_dlp() -> str:
+    """Locate the yt-dlp executable.
+    
+    Search order:
+    1. Bundled yt-dlp executable in the same directory (for distributions)
+    2. yt-dlp in system PATH
+    
+    Returns:
+        str: Path or command name for yt-dlp executable
+    """
+    base = _host_dir()
+    # Prefer a bundled yt-dlp executable in the same directory
+    candidates: List[Path] = []
+    if os.name == 'nt':
+        candidates.append(base / 'yt-dlp.exe')
+    candidates.append(base / 'yt-dlp')
+    for c in candidates:
+        try:
+            if c.exists():
+                return str(c)
+        except Exception:
+            pass
+    # Fallback to PATH
+    return 'yt-dlp'
 
 SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(KiB|MiB|GiB|TiB)")
 ID_RE = re.compile(r"^\s*(\d{3,4})\b")
@@ -104,10 +222,27 @@ def parse_sizes_from_format_list(text: str):
 
 
 def run_ytdlp_dump_json(url: str, timeout_sec: int = 25):
-    """Return (json_obj:dict|None, err:str|None, code:int) using -J --no-playlist to avoid multiple calls"""
+    """Run yt-dlp with -J flag to extract complete metadata as JSON.
+    
+    This is the preferred method for extracting video information as it
+    provides comprehensive data in a single call.
+    
+    Args:
+        url: YouTube video URL
+        timeout_sec: Maximum execution time in seconds (default: 25)
+        
+    Returns:
+        tuple: (json_dict or None, error_string or None, exit_code)
+        
+    Example:
+        meta, err, code = run_ytdlp_dump_json('https://youtube.com/watch?v=xxx')
+        if code == 0 and meta:
+            duration = meta.get('duration')
+    """
     try:
+        yt = find_yt_dlp()
         proc = subprocess.run(
-            ["yt-dlp", "-J", "-s", "--no-playlist", url],
+            [yt, "-J", "-s", "--no-playlist", url],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -128,8 +263,14 @@ def run_ytdlp_dump_json(url: str, timeout_sec: int = 25):
     return obj, None, 0
 
 
-def _get_num(val):
-    try:
+def _get_num(val):    """Safely convert a value to float, returning None on error.
+    
+    Args:
+        val: Value to convert
+        
+    Returns:
+        float or None
+    """    try:
         if val is None:
             return None
         v = float(val)
@@ -139,6 +280,20 @@ def _get_num(val):
 
 
 def _filesize_from_fmt(fmt: dict, duration_sec: Optional[int]):
+    """Extract or estimate file size from a yt-dlp format object.
+    
+    Attempts multiple strategies in order:
+    1. Use exact 'filesize' field if available
+    2. Use 'filesize_approx' field if available
+    3. Estimate from bitrate (tbr/vbr/abr) and duration
+    
+    Args:
+        fmt: Format dictionary from yt-dlp metadata
+        duration_sec: Video duration in seconds (for bitrate estimation)
+        
+    Returns:
+        int: Estimated size in bytes, or None if unable to determine
+    """
     # Prefer exact filesize, then approx; else estimate from tbr/vbr/abr and duration
     for k in ("filesize", "filesize_approx"):
         v = fmt.get(k)
@@ -163,6 +318,22 @@ def _filesize_from_fmt(fmt: dict, duration_sec: Optional[int]):
 
 
 def _pick_audio(formats: List[Dict[str, Any]], duration_sec: Optional[int]):
+    """Select the best audio-only format from available formats.
+    
+    Prefers audio tracks in this order:
+    1. Opus codec (best quality/compression)
+    2. AAC codec
+    3. Any audio-only format
+    
+    Also prefers formats with known file sizes.
+    
+    Args:
+        formats: List of format dictionaries from yt-dlp
+        duration_sec: Video duration for size estimation
+        
+    Returns:
+        tuple: (format_dict or None, size_in_bytes or None)
+    """
     cands = []
     for f in formats or []:
         acodec = (f.get('acodec') or '').lower()
@@ -185,7 +356,26 @@ def _pick_audio(formats: List[Dict[str, Any]], duration_sec: Optional[int]):
 
 
 def _pick_video_by_height(formats: List[Dict[str, Any]], target_h: int, duration_sec: Optional[int]):
-    """Prefer exact height; else nearest below; else nearest above. Return (fmt, size_bytes)."""
+    """Select the best video-only format matching a target height.
+    
+    Selection strategy:
+    1. Prefer exact height match
+    2. Fall back to nearest height below target
+    3. Fall back to nearest height above target
+    
+    Among candidates with same height, prefers:
+    - Formats with known file size
+    - Higher total bitrate (tbr)
+    - Higher frame rate
+    
+    Args:
+        formats: List of format dictionaries from yt-dlp
+        target_h: Target height in pixels (e.g., 720, 1080)
+        duration_sec: Video duration for size estimation
+        
+    Returns:
+        tuple: (format_dict or None, size_in_bytes or None)
+    """
     videos = []
     for f in formats or []:
         vcodec = (f.get('vcodec') or '').lower()
@@ -278,9 +468,30 @@ def _pick_progressive_by_height(formats: List[Dict[str, Any]], target_h: int, du
 
 
 def compute_sizes_from_json_all(meta: dict, duration_hint: Optional[int] = None):
-    """Compute sizes for 144p, 240p, 360p, 480p, 720p, 1080p plus duration from yt-dlp JSON.
-    Prefer separate video-only by target height + best audio; otherwise fall back to progressive.
-    Returns (sizes_by_height: dict, video_only_by_id: dict, audio_251_bytes: int|None, duration_sec: int|None).
+    """Compute video sizes for all resolutions from yt-dlp JSON metadata.
+    
+    Analyzes the complete metadata to extract sizes for:
+    - Standard resolutions: 144p, 240p, 360p, 480p, 720p, 1080p, 1440p
+    - Codec variants for 1080p: H.264 (299), VP9 (303), AV1 (399)
+    - Codec variants for 1440p: VP9 (308), AV1 (400)
+    - Audio track (typically format 251)
+    
+    The function attempts to:
+    1. Extract sizes from specific format IDs
+    2. Pick best matching format by height if ID not found
+    3. Combine video-only + audio-only for total size
+    4. Fall back to progressive formats if separate tracks unavailable
+    
+    Args:
+        meta: Complete metadata dictionary from yt-dlp JSON dump
+        duration_hint: Optional duration in seconds (used if metadata lacks duration)
+        
+    Returns:
+        tuple: (sizes_dict, video_only_dict, audio_251_bytes, duration_sec)
+            - sizes_dict: Combined sizes keyed by 's144', 's240', etc.
+            - video_only_dict: Video-only sizes keyed by 'v394', 'v299', etc.
+            - audio_251_bytes: Size of format 251 audio track
+            - duration_sec: Video duration in seconds
     """
     if not isinstance(meta, dict):
         return {}, {}, None, None
@@ -375,8 +586,9 @@ def compute_sizes_from_json_all(meta: dict, duration_hint: Optional[int] = None)
 
 def run_ytdlp_list_formats(url: str, timeout_sec: int = 25):
     try:
+        yt = find_yt_dlp()
         proc = subprocess.run(
-            ["yt-dlp", "-F", "--no-playlist", url],
+            [yt, "-F", "--no-playlist", url],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -397,8 +609,9 @@ def run_ytdlp_get_duration(url: str, timeout_sec: int = 20):
     """Return (duration_seconds:int|None, err:str|None, code:int)"""
     # Use --print to directly output the duration in seconds if available
     try:
+        yt = find_yt_dlp()
         proc = subprocess.run(
-            ["yt-dlp", "--print", "%(duration)s", "-s", "--no-playlist", url],
+            [yt, "--print", "%(duration)s", "-s", "--no-playlist", url],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -456,6 +669,11 @@ def main():
     s1440_308 = s1440_400 = None
     a251 = None
     dur_sec = None
+    # Track fallback (-F) and duration errors explicitly
+    f_err = None
+    f_code = None
+    d_err = None
+    d_code = None
 
     if j_code == 0 and meta:
         sizes_by_h, video_only_by_id, a251_b, dur_sec = compute_sizes_from_json_all(meta, duration_hint)
@@ -490,8 +708,8 @@ def main():
     # If still missing everything, try -F as a fallback
     if all(x is None for x in [s144, s240, s360, s480, s720, s1080, s1440]):
         _dbg("sizes not found in -J; trying -F ...")
-        out, err, code = run_ytdlp_list_formats(url)
-        if code == 0 and out:
+        out, f_err, f_code = run_ytdlp_list_formats(url)
+        if f_code == 0 and out:
             sizes = parse_sizes_from_format_list(out)
             v144 = sizes.get("394")
             v240 = sizes.get("395")
@@ -530,6 +748,28 @@ def main():
         dur_sec = duration_hint
 
     dur_h = humanize_duration(dur_sec)
+
+    # If we still have no sizes at all, treat this as an error and report why.
+    has_any_size = any(x is not None for x in [
+        s144, s240, s360, s480, s720, s1080, s1440,
+        s1080_299, s1080_303, s1080_399, s1440_308, s1440_400
+    ])
+    if not has_any_size:
+        # Prioritize clear causes
+        if j_code == 127 or f_code == 127:
+            send_message({"ok": False, "error": "yt-dlp not found in PATH. Please install yt-dlp."})
+            return
+        if j_code == 124 or f_code == 124:
+            send_message({"ok": False, "error": "yt-dlp timed out while fetching data."})
+            return
+        # Generic failure with any captured stderr
+        err_msgs = []
+        if j_err: err_msgs.append(str(j_err)[:300])
+        if f_err and f_code is not None: err_msgs.append(str(f_err)[:300])
+        if d_err and d_code not in (None, 0): err_msgs.append(str(d_err)[:300])
+        emsg = "; ".join([e for e in err_msgs if e]) or "No size information could be determined from yt-dlp output."
+        send_message({"ok": False, "error": emsg})
+        return
 
     resp = {
         "ok": True,

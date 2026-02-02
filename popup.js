@@ -47,7 +47,22 @@
     };
   }
 
-  // Quick client-side estimates for fast initial display
+  /**
+   * Estimates video file size based on resolution and duration
+   * 
+   * Uses average bitrate estimates for each resolution tier:
+   * - 144p: 0.1 Mbps
+   * - 240p: 0.3 Mbps
+   * - 360p: 0.6 Mbps
+   * - 480p: 1.2 Mbps
+   * - 720p: 2.5 Mbps
+   * - 1080p: 5.5 Mbps
+   * - 1440p: 9.0 Mbps
+   * 
+   * @param {number} height - The video height (144, 240, 360, etc.)
+   * @param {number} durationSec - Video duration in seconds
+   * @returns {number|null} Estimated size in bytes, or null if duration invalid
+   */
   function estimateSizeBytesByHeight(height, durationSec) {
     if (!durationSec || !isFinite(durationSec) || durationSec <= 0) return null;
     const avgMbps = {144:0.1, 240:0.3, 360:0.6, 480:1.2, 720:2.5, 1080:5.5, 1440:9.0};
@@ -55,6 +70,17 @@
     const bytes = (rate * 1000000 / 8) * durationSec; // Mbps -> Bps
     return Math.max(0, Math.round(bytes));
   }
+  /**
+   * Builds complete size estimate maps for all selected resolutions
+   * 
+   * Creates both human-readable and byte-value maps based on duration.
+   * Used to show quick estimates while exact data is being fetched.
+   * 
+   * @param {number} durationSec - Video duration in seconds
+   * @returns {Object} Object containing:
+   *   - {Object} humanMap - Human-readable sizes (e.g., "45.32 MB")
+   *   - {Object} bytesMap - Raw byte values
+   */
   function buildEstimateMaps(durationSec) {
     const order = ['144p','240p','360p','480p','720p','1080p','1440p'];
     const keyMap = { '144p':'s144p','240p':'s240p','360p':'s360p','480p':'s480p','720p':'s720p','1080p':'s1080p','1440p':'s1440p' };
@@ -73,6 +99,14 @@
     return { humanMap, bytesMap };
   }
 
+  /**
+   * Starts an animated text spinner in the status element
+   * 
+   * Displays a cycling animation to indicate background processing.
+   * 
+   * @param {string} [base='Refreshing'] - The base status message
+   * @returns {void}
+   */
   function startStatusSpinner(base = 'Refreshing') {
     try { clearInterval(statusSpinTimer); } catch (_) {}
     let i = 0;
@@ -91,6 +125,22 @@
     }
   }
 
+  /**
+   * Converts bytes to human-readable format using decimal (SI) units
+   * 
+   * Uses 1000-based units (KB, MB, GB, TB) as per SI standards.
+   * 
+   * @param {number} n - The number of bytes to format
+   * @returns {string|null} Formatted string (e.g., "45.32 MB") or null if invalid
+   */
+  /**
+   * Converts bytes to human-readable format using decimal (SI) units
+   * 
+   * Uses 1000-based units (KB, MB, GB, TB) as per SI standards.
+   * 
+   * @param {number} n - The number of bytes to format
+   * @returns {string|null} Formatted string (e.g., "45.32 MB") or null if invalid
+   */
   function humanizeBytesDecimal(n) {
     if (n == null || !isFinite(n)) return null;
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -104,6 +154,26 @@
     return `${v.toFixed(2)} ${units[i]}`;
   }
 
+  /**
+   * Converts seconds to human-readable duration format
+   * 
+   * Formats as:
+   * - H:MM:SS for videos over 1 hour
+   * - M:SS for videos under 1 hour
+   * 
+   * @param {number} seconds - Duration in seconds
+   * @returns {string|null} Formatted duration (e.g., "5:32", "1:23:45") or null if invalid
+   */
+  /**
+   * Converts seconds to human-readable duration format
+   * 
+   * Formats as:
+   * - H:MM:SS for videos over 1 hour
+   * - M:SS for videos under 1 hour
+   * 
+   * @param {number} seconds - Duration in seconds
+   * @returns {string|null} Formatted duration (e.g., "5:32", "1:23:45") or null if invalid
+   */
   function humanizeDuration(seconds) {
     if (seconds == null || !isFinite(seconds) || seconds <= 0) return null;
     try {
@@ -210,6 +280,24 @@
     refreshBtn.style.display = 'none';
   }
 
+  /**
+   * Renders the size information table in the popup UI
+   * 
+   * Creates rows for each selected resolution with:
+   * - Resolution label (144p, 720p, etc.)
+   * - Size value(s) - may show multiple codec variants for 1080p/1440p
+   * - "(current)" indicator if this is the playing resolution
+   * - "Est." prefix for estimated values
+   * 
+   * Special handling:
+   * - 1080p shows H.264/VP9/AV1 variants if available
+   * - 1440p shows VP9/AV1 variants if available
+   * - If current resolution matches and we know the itag, shows only that codec
+   * 
+   * @param {Object} humanMap - Human-readable size strings
+   * @param {Object} bytesMap - Raw byte values
+   * @returns {void}
+   */
   function renderSizes(humanMap, bytesMap) {
     const keyMap = {
       '144p': 's144p',
@@ -313,6 +401,19 @@
     sizesContainer.appendChild(frag);
   }
 
+  /**
+   * Displays the results in the popup UI
+   * 
+   * Updates all UI elements with size data, duration, and status notes.
+   * Shows the result container and hides status/error messages.
+   * 
+   * @param {Object} humanMap - Human-readable size strings
+   * @param {Object} bytesMap - Raw byte values
+   * @param {string} note - Status note to display (e.g., "Cached • 5 min ago")
+   * @param {string} duration - Formatted duration string
+   * @param {boolean} isEstimated - Whether values are estimates or exact
+   * @returns {void}
+   */
   function showResult(humanMap, bytesMap, note, duration, isEstimated) {
     statusEl.style.display = 'none';
     errEl.style.display = 'none';
@@ -332,6 +433,12 @@
 
   // (humanizeBytesDecimal defined above)
 
+  /**
+   * Checks if a URL is a valid YouTube video URL
+   * 
+   * @param {string} url - The URL to validate
+   * @returns {boolean} True if URL is a YouTube video page
+   */
   function isYouTubeUrl(url) {
     try {
       const u = new URL(url);
@@ -370,6 +477,38 @@
     return `${hrs} hr${hrs === 1 ? '' : 's'} ago`;
   }
 
+  /**
+   * Validates that cached data contains at least one valid size value
+   * 
+   * Checks both human-readable and byte maps for any non-null values.
+   * Prevents showing empty cache entries as valid data.
+   * 
+   * @param {Object} cached - The cached data object to validate
+   * @returns {boolean} True if cache contains at least one valid size
+   */
+  function cacheHasAnySize(cached) {
+    try {
+      if (!cached) return false;
+      const keys = [
+        's144p','s240p','s360p','s480p','s720p','s1080p','s1440p',
+        's1080p_299','s1080p_303','s1080p_399',
+        's1440p_308','s1440p_400'
+      ];
+      const b = cached.bytes;
+      const h = cached.human;
+      if (b && keys.some(k => typeof b[k] === 'number' && isFinite(b[k]))) return true;
+      if (h && keys.some(k => typeof h[k] === 'string' && h[k])) return true;
+      return false;
+    } catch (_) { return false; }
+  }
+
+  /**
+   * Reads cached size data for a video from storage
+   * 
+   * @async
+   * @param {string} videoId - The YouTube video ID
+   * @returns {Promise<Object|null>} Cached data object or null if not found
+   */
   async function readCache(videoId) {
     const key = `sizeCache_${videoId}`;
     const obj = await cacheGet([key]);
@@ -381,6 +520,16 @@
     await cacheSet({ [key]: data });
   }
 
+  /**
+   * Directly calls the native messaging host to fetch video size data
+   * 
+   * Establishes a native connection to ytdlp_host.py and requests size information.
+   * Used as a fallback when background prefetch fails or for forced refreshes.
+   * 
+   * @param {string} url - The YouTube video URL
+   * @param {number} [durationHint] - Optional duration hint in seconds
+   * @returns {Promise<Object>} Promise resolving to size data or rejecting with error
+   */
   function callNativeHost(url, durationHint) {
     return new Promise((resolve, reject) => {
       const hostName = 'com.ytdlp.sizer';
@@ -502,22 +651,25 @@
     const cached = await readCache(videoId);
     const now = Date.now();
     const isFresh = cached && typeof cached.timestamp === 'number' && (now - cached.timestamp) <= TTL_MS;
+    const hasSizes = cacheHasAnySize(cached);
+    const isFreshGood = isFresh && hasSizes;
 
-    if (isFresh) {
+    if (isFreshGood) {
       const dur = cached.human && cached.human.duration ? cached.human.duration : null;
       showResult(cached.human, cached.bytes, `Cached • ${formatAge(cached.timestamp)}`, dur);
-    } else if (cached) {
+    } else if (cached && hasSizes) {
       const dur = cached.human && cached.human.duration ? cached.human.duration : null;
       showResult(cached.human, cached.bytes, `Cached (stale) • ${formatAge(cached.timestamp)} • refreshing…`, dur);
       startStatusSpinner('Refreshing');
     } else {
-      // If we have duration, show quick estimates immediately
+      // No usable cache (or cache contains no sizes). Prefer quick estimates if we know duration.
       if (currentDurationSec) {
         const { humanMap, bytesMap } = buildEstimateMaps(currentDurationSec);
         showResult(humanMap, bytesMap, 'Estimated • fetching exact…', humanizeDuration(currentDurationSec), true);
       } else {
         statusEl.textContent = 'Contacting native host…';
       }
+      startStatusSpinner('Refreshing');
     }
 
     async function doFetch() {
@@ -611,7 +763,7 @@
     }
 
     // Auto-fetch if not fresh
-    if (!isFresh) {
+    if (!isFreshGood) {
       doFetch();
     }
 

@@ -1,5 +1,20 @@
-// Background service worker for auto-prefetching sizes on YouTube pages
+/**
+ * Background Service Worker for YouTube Size Extension
+ * 
+ * This service worker handles:
+ * - Auto-prefetching video size data when YouTube pages load
+ * - Managing cache with configurable TTL
+ * - Native messaging host communication
+ * - Cloud API fallback support
+ * - Badge indicators and status updates
+ * - Duration hints collection from content script
+ * 
+ * @fileoverview Main background service worker for the extension
+ * @author YouTube Size Extension Team
+ * @version 0.2.0
+ */
 
+/** @const {string} The native messaging host identifier */
 const HOST_NAME = 'com.ytdlp.sizer';
 
 // In-flight requests to avoid duplicate native host calls per video
@@ -8,8 +23,65 @@ const CLEAR_BADGE_MS = 8000; // Clear badge after 8s
 const lastFetchMs = new Map(); // videoId -> last fetch timestamp
 // Duration hints collected from content/popup to help host avoid extra duration calls
 const durationHints = new Map(); // videoId -> { d: seconds, ts: epoch_ms }
-const HINT_TTL_MS = 60 * 60 * 1000; // 1 hour TTL for duration hints
 
+/**
+ * Calls the cloud API to fetch video size information
+ * 
+ * This is an alternative to the native messaging host, allowing users to deploy
+ * their own Node.js server for processing yt-dlp requests.
+ * 
+ * @async
+ * @param {string} url - The YouTube video URL to analyze
+ * @param {number} [durationHint] - Optional video duration in seconds to improve accuracy
+ * @returns {Promise<Object>} Response object with structure:
+ *   - {boolean} ok - Whether the request succeeded
+ *   - {string} human - Human-readable size strings
+ *   - {Object} bytes - Raw byte sizes for each resolution
+ *   - {number} duration - Video duration in seconds
+ * @throws {Error} If cloud API URL is not configured or request fails
+ * @example
+ *   const result = await callCloudApi('https://youtube.com/watch?v=xxx', 180);
+ *   console.log(result.human.s720p); // "45.32 MB"
+ */
+async function callCloudApi(url, durationHint) {
+  const base = (settings && typeof settings.cloudApiUrl === 'string') ? settings.cloudApiUrl.trim() : '';
+  if (!base) throw new Error('Cloud API URL not configured');
+  const endpoint = base; // allow full URL; if you want /size, set it in options
+  const ac = new AbortController();
+  const id = setTimeout(() => { try { ac.abort(); } catch (_) {} }, 25000);
+  try {
+    const body = { url };
+    if (typeof durationHint === 'number' && isFinite(durationHint) && durationHint > 0) {
+      body.duration_hint = Math.round(durationHint);
+    }
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ac.signal,
+    });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch (_) {}
+    if (!res.ok || !json) throw new Error((json && json.error) || `Cloud API HTTP ${res.status}`);
+    if (!json.ok) throw new Error(json.error || 'Cloud API returned error');
+    return json; // { ok, human, bytes, duration? }
+  } finally {
+    try { clearTimeout(id); } catch (_) {}
+  }
+}
+/** @const {number} Time-to-live for duration hints in milliseconds (1 hour) */
+const HINT_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Retrieves a cached duration hint for a given video ID
+ * 
+ * Duration hints are collected from the content script when videos play,
+ * allowing us to avoid redundant duration fetches from yt-dlp.
+ * 
+ * @param {string} videoId - The YouTube video ID
+ * @returns {number|null} Duration in seconds if found and fresh, null otherwise
+ */
 function getDurationHint(videoId) {
   try {
     const rec = durationHints.get(videoId);
@@ -67,6 +139,15 @@ function tabsGet(tabId) {
   });
 }
 
+/**
+ * Starts an animated spinner badge on the specified tab
+ * 
+ * Displays a cycling animation ('.', '..', '...') to indicate that
+ * video size data is being fetched in the background.
+ * 
+ * @param {number} tabId - The Chrome tab ID to show the spinner on
+ * @returns {void}
+ */
 function startBadgeSpinner(tabId) {
   if (!settings.showBadge || typeof chrome.action === 'undefined' || typeof tabId !== 'number') return;
   stopBadgeSpinner(tabId);
@@ -80,12 +161,24 @@ function startBadgeSpinner(tabId) {
   tabBadgeTimers.set(tabId, id);
 }
 
+/**
+ * Stops the animated spinner badge on the specified tab
+ * 
+ * @param {number} tabId - The Chrome tab ID to stop the spinner on
+ * @returns {void}
+ */
 function stopBadgeSpinner(tabId) {
   if (!tabBadgeTimers.has(tabId)) return;
   try { clearInterval(tabBadgeTimers.get(tabId)); } catch (_) {}
   tabBadgeTimers.delete(tabId);
 }
 
+/**
+ * Sets a green checkmark badge to indicate successful cache
+ * 
+ * @param {number} tabId - The Chrome tab ID to show the checkmark on
+ * @returns {void}
+ */
 function setBadgeCheck(tabId) {
   if (!settings.showBadge || typeof chrome.action === 'undefined' || typeof tabId !== 'number') return;
   try {
@@ -115,7 +208,7 @@ async function ensureBadgeForTab(url, tabId) {
 }
 
 // Settings with defaults
-const defaultSettings = { autoPrefetch: true, ttlHours: 24, showBadge: true, showLength: true, resolutions: ["480p", "720p", "1080p", "1440p"] };
+const defaultSettings = { autoPrefetch: true, ttlHours: 24, showBadge: true, showLength: true, useCloud: false, cloudApiUrl: "", resolutions: ["480p", "720p", "1080p", "1440p"] };
 let settings = { ...defaultSettings };
 
 function getTTLms() {
@@ -129,6 +222,17 @@ async function loadSettings() {
     const obj = await storageGet(['ytSize_settings']);
     const s = obj && obj.ytSize_settings ? obj.ytSize_settings : {};
     settings = { ...defaultSettings, ...s };
+    // Optionally merge packaged config.json overrides (if present)
+    try {
+      const url = chrome.runtime.getURL('config.json');
+      const res = await fetch(url);
+      if (res && res.ok) {
+        const cfg = await res.json();
+        if (cfg && typeof cfg === 'object') {
+          settings = { ...settings, ...cfg };
+        }
+      }
+    } catch (_) { /* ignore if missing */ }
   } catch (_) {
     settings = { ...defaultSettings };
   }
@@ -146,6 +250,17 @@ try {
   });
 } catch (_) {}
 
+/**
+ * Checks if a URL is a valid YouTube video URL
+ * 
+ * Supports multiple YouTube URL formats:
+ * - Standard: https://www.youtube.com/watch?v=VIDEO_ID
+ * - Shorts: https://www.youtube.com/shorts/VIDEO_ID
+ * - Short URL: https://youtu.be/VIDEO_ID
+ * 
+ * @param {string} url - The URL to check
+ * @returns {boolean} True if the URL is a YouTube video URL, false otherwise
+ */
 function isYouTubeUrl(url) {
   try {
     const u = new URL(url);
@@ -159,6 +274,16 @@ function isYouTubeUrl(url) {
   }
 }
 
+/**
+ * Extracts the video ID from various YouTube URL formats
+ * 
+ * @param {string} url - The YouTube URL to parse
+ * @returns {string|null} The video ID (11-character string) or null if not found
+ * @example
+ *   extractVideoId('https://youtube.com/watch?v=dQw4w9WgXcQ') // 'dQw4w9WgXcQ'
+ *   extractVideoId('https://youtu.be/dQw4w9WgXcQ') // 'dQw4w9WgXcQ'
+ *   extractVideoId('https://youtube.com/shorts/dQw4w9WgXcQ') // 'dQw4w9WgXcQ'
+ */
 function extractVideoId(url) {
   try {
     const u = new URL(url);
@@ -230,6 +355,18 @@ function cacheHasAnySize(cached) {
   } catch (_) { return false; }
 }
 
+/**
+ * Communicates with the native messaging host to fetch video sizes
+ * 
+ * Establishes a connection to the Python native host (ytdlp_host.py) which
+ * runs yt-dlp to extract video format and size information.
+ * 
+ * @async
+ * @param {string} url - The YouTube video URL to analyze
+ * @param {number} [durationHint] - Optional duration hint in seconds
+ * @returns {Promise<Object>} Response with size data for multiple resolutions
+ * @throws {Error} If native host connection fails or yt-dlp returns an error
+ */
 function callNativeHost(url, durationHint) {
   return new Promise((resolve, reject) => {
     let port;
@@ -277,6 +414,13 @@ function callNativeHost(url, durationHint) {
   });
 }
 
+/**
+ * Checks if cached size data exists and is still fresh (within TTL)
+ * 
+ * @async
+ * @param {string} videoId - The YouTube video ID to check
+ * @returns {Promise<boolean>} True if cache is fresh and contains valid size data
+ */
 async function isFreshInCache(videoId) {
   const key = `sizeCache_${videoId}`;
   const obj = await cacheGet([key]);
@@ -286,6 +430,22 @@ async function isFreshInCache(videoId) {
   return (Date.now() - cached.timestamp) <= getTTLms();
 }
 
+/**
+ * Prefetches video size data for a YouTube URL and caches the results
+ * 
+ * This is the main orchestration function that:
+ * 1. Validates the URL and extracts the video ID
+ * 2. Checks if data is already cached and fresh
+ * 3. Calls either the cloud API or native host to fetch sizes
+ * 4. Updates the cache and notifies open popups
+ * 5. Updates the browser action badge to show status
+ * 
+ * @async
+ * @param {string} url - The YouTube video URL to prefetch data for
+ * @param {number} [tabId] - The tab ID to show badge updates on
+ * @param {boolean} [forced=false] - If true, bypasses autoPrefetch setting and rate limits
+ * @returns {Promise<void>}
+ */
 async function prefetchForUrl(url, tabId, forced = false) {
   if (!isYouTubeUrl(url)) return;
   const videoId = extractVideoId(url);
@@ -312,7 +472,22 @@ async function prefetchForUrl(url, tabId, forced = false) {
     startBadgeSpinner(tabId);
 
     const durationHint = getDurationHint(videoId);
-    const msg = await callNativeHost(url, durationHint);
+    let msg = null;
+    const tryCloudFirst = !!(settings && settings.useCloud && typeof settings.cloudApiUrl === 'string' && settings.cloudApiUrl.trim());
+    try {
+      if (tryCloudFirst) {
+        msg = await callCloudApi(url, durationHint);
+      } else {
+        msg = await callNativeHost(url, durationHint);
+      }
+    } catch (e1) {
+      // Fallback to the other path
+      try {
+        msg = tryCloudFirst ? await callNativeHost(url, durationHint) : await callCloudApi(url, durationHint);
+      } catch (e2) {
+        throw (e2 || e1);
+      }
+    }
     if (msg && msg.ok) {
       const key = `sizeCache_${videoId}`;
       await cacheSetDual({
