@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+cloud_api/node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Native host
+native_host/
+
+# Documentation
+*.md
+
+# Config files
+*.json

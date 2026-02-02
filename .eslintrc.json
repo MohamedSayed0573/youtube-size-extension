@@ -1,0 +1,71 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "webextensions": true
+  },
+  "extends": ["eslint:recommended", "plugin:jsdoc/recommended", "prettier"],
+  "plugins": ["jsdoc"],
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "script"
+  },
+  "globals": {
+    "chrome": "readonly"
+  },
+  "rules": {
+    "no-unused-vars": [
+      "warn",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "no-console": "off",
+    "no-empty": [
+      "error",
+      {
+        "allowEmptyCatch": true
+      }
+    ],
+    "prefer-const": "warn",
+    "no-var": "warn",
+    "eqeqeq": ["warn", "always"],
+    "curly": ["warn", "multi-line"],
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
+    "jsdoc/require-jsdoc": [
+      "warn",
+      {
+        "require": {
+          "FunctionDeclaration": true,
+          "MethodDefinition": false,
+          "ClassDeclaration": false,
+          "ArrowFunctionExpression": false,
+          "FunctionExpression": false
+        }
+      }
+    ],
+    "jsdoc/require-param-description": "warn",
+    "jsdoc/require-returns-description": "warn",
+    "jsdoc/check-param-names": "warn",
+    "jsdoc/check-tag-names": "warn",
+    "jsdoc/check-types": "off",
+    "jsdoc/require-param-type": "off",
+    "jsdoc/require-returns-type": "off"
+  },
+  "overrides": [
+    {
+      "files": ["cloud_api/**/*.js"],
+      "env": {
+        "node": true,
+        "browser": false,
+        "webextensions": false
+      },
+      "globals": {
+        "chrome": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+cloud_api/node_modules/
+
+# Build outputs
+dist/
+build/
+*.zip
+
+# Native host binaries
+native_host/yt-dlp
+native_host/yt-dlp.exe
+native_host/*.pyc
+native_host/__pycache__/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Extension artifacts
+*.crx
+*.pem
+*.xpi

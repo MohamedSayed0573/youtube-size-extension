@@ -1,10 +1,10 @@
 /**
  * Cloud API Server for YouTube Size Extension
- * 
+ *
  * This Node.js/Express server provides an HTTP API for fetching YouTube video
  * size information using yt-dlp. It serves as an alternative to the native
  * messaging host, allowing users to deploy the service on a cloud platform.
- * 
+ *
  * Key features:
  * - RESTful API endpoint for size extraction
  * - Supports duration hints to optimize yt-dlp calls
@@ -13,12 +13,12 @@
  * - CORS enabled for browser extension requests
  * - Timeout protection (25 seconds)
  * - Comprehensive error handling
- * 
+ *
  * Endpoint:
  *   POST /size
  *   Body: { url: string, duration_hint?: number }
  *   Response: { ok: boolean, bytes: Object, human: Object, duration: number }
- * 
+ *
  * @fileoverview Cloud API server for yt-dlp size extraction
  * @author YouTube Size Extension Team
  * @version 1.0.0
@@ -52,7 +52,7 @@ const AUDIO_FALLBACK_ID = "251";
 
 /**
  * Converts bytes to human-readable format using decimal (SI) units
- * 
+ *
  * @param {number} n - Number of bytes
  * @returns {string|null} Formatted string (e.g., "45.32 MB") or null if invalid
  */
@@ -72,7 +72,7 @@ function humanizeBytes(n) {
 
 /**
  * Converts seconds to H:MM:SS or M:SS format
- * 
+ *
  * @param {number} seconds - Duration in seconds
  * @returns {string|null} Formatted duration string or null if invalid
  */
@@ -95,10 +95,10 @@ function pickFirst(...vals) {
 
 /**
  * Calculates file size from a yt-dlp format object
- * 
+ *
  * Prefers exact filesize, falls back to filesize_approx, then estimates
  * from bitrate (tbr) and duration.
- * 
+ *
  * @param {Object} fmt - The format object from yt-dlp JSON output
  * @param {number} durationSec - Video duration in seconds
  * @returns {number|null} Estimated size in bytes or null
@@ -123,13 +123,13 @@ function sizeFromFormat(fmt, durationSec) {
 
 /**
  * Extracts video metadata from YouTube using yt-dlp
- * 
+ *
  * Runs yt-dlp with -J flag to get complete metadata in JSON format.
  * Includes timeout protection and error handling.
- * 
+ *
  * WARNING: This function executes shell commands. The URL should be
  * validated before calling this function to prevent command injection.
- * 
+ *
  * @async
  * @param {string} url - The YouTube video URL
  * @returns {Promise<Object>} Parsed JSON metadata from yt-dlp
@@ -161,15 +161,15 @@ async function extractInfo(url) {
 
 /**
  * Computes video sizes for all resolutions from yt-dlp metadata
- * 
+ *
  * Analyzes the formats array from yt-dlp JSON output to calculate
  * combined sizes (video + audio) for each resolution tier.
- * 
+ *
  * Handles:
  * - Multiple codec variants (H.264/VP9/AV1 for 1080p/1440p)
  * - Audio track combination (typically format 251)
  * - Duration fallback to hint if metadata missing
- * 
+ *
  * @param {Object} meta - The complete metadata object from yt-dlp
  * @param {number} [durationHint] - Optional duration hint in seconds
  * @returns {Object} Result object with ok, bytes, human, and duration fields

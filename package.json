@@ -1,0 +1,29 @@
+{
+  "name": "youtube-size-extension",
+  "version": "0.2.0",
+  "description": "Browser extension to display YouTube video download sizes",
+  "private": true,
+  "scripts": {
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
+    "format": "prettier --write \"**/*.{js,json,html,md}\"",
+    "format:check": "prettier --check \"**/*.{js,json,html,md}\"",
+    "check": "npm run format:check && npm run lint"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-jsdoc": "^48.0.0",
+    "prettier": "^3.2.4"
+  },
+  "keywords": [
+    "youtube",
+    "browser-extension",
+    "chrome-extension",
+    "firefox-extension",
+    "yt-dlp",
+    "video-size"
+  ],
+  "author": "YouTube Size Extension Team",
+  "license": "MIT"
+}
