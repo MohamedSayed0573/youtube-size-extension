@@ -37,7 +37,14 @@ const execFileAsync = promisify(execFile);
  */
 async function executeYtdlp(url, timeout, maxBuffer, retryAttempt) {
     try {
-        const args = ["-J", "--skip-download", "--no-playlist", url];
+        const args = [
+            "-J",
+            "--skip-download",
+            "--no-playlist",
+            "--js-runtimes",
+            "node",
+            url,
+        ];
 
         const { stdout, stderr } = await execFileAsync("yt-dlp", args, {
             timeout,
