@@ -84,7 +84,24 @@ cd native_host
 - Background worker: `chrome://extensions` → Inspect service worker
 - Content script: Open DevTools on YouTube page → Sources → content.js
 - Native host: Check stderr logs (written by `_dbg()` function)
-- Cloud API: `NODE_ENV=development node server.js` for verbose logging
+- Cloud API: `NODE_ENV=development npm run dev` for colorized pino logs
+- Sentry Dashboard: https://mohamed-sayed-dx.sentry.io/issues/?project=node-express
+- Error Tracking: All unhandled errors automatically sent to Sentry
+
+### Logging System (Cloud API)
+
+Structured logging with **pino**:
+
+```javascript
+// Environment-based configuration:
+// - Test: silent (no output)
+// - Development: pino-pretty (colorized readable)
+// - Production: JSON (for log aggregation)
+
+// Usage:
+logger.info({ url, duration }, "Message");
+logger.error({ error: err.message, path }, "Error occurred");
+```
 
 ## Code Conventions
 
@@ -142,6 +159,16 @@ Background worker stores in chrome.storage.local:
 
 ## External Dependencies
 
+**Cloud API:**
+- **@sentry/node**: Error tracking and performance monitoring (v10.38.0+)
+- **@sentry/profiling-node**: CPU profiling for performance analysis
+- **pino**: Structured logging (v8.17.2+)
+- **pino-pretty**: Development log formatting (v10.3.1+)
+- **express**: HTTP framework (v4.18.2+)
+- **express-rate-limit**: API rate limiting (v7.1.5+)
+- **zod**: Input validation (v3.22.4+)
+
+**Browser Extension:**
 - **yt-dlp** CLI tool: Must be in PATH for both native host and cloud API
 - **Chrome/Firefox APIs**: tabs, nativeMessaging, storage, action (badges)
 - **YouTube DOM**: Watches `ytd-player video.html5-main-video` element
@@ -178,12 +205,61 @@ fetch(cloudApiUrl, {
 });
 ```
 
+## Cloud API Testing
+
+**Jest test suite** (21 tests, 84% coverage):
+
+```bash
+cd cloud_api
+npm test              # Run with coverage
+npm run test:watch   # Watch mode
+npm run test:ci      # CI mode (force exit)
+```
+
+**Coverage thresholds:**
+- Statements: 75%
+- Functions: 80%
+- Branches: 60%
+- Lines: 75%
+
+**Test categories:**
+- Health endpoints (3 tests)
+- API validation (8 tests)
+- Security features (5 tests)
+- Error handling (3 tests)
+- CORS configuration (2 tests)
+
+## Sentry Monitoring
+
+**Error Tracking:**
+- `instrument.js` initializes Sentry at startup (MUST be first require)
+- All uncaught exceptions automatically captured
+- Environment tagged (development/staging/production)
+- Breadcrumbs track user actions before error
+
+**Performance Monitoring:**
+- 100% sampling in development
+- 10% sampling in production
+- CPU profiling enabled (relative to trace sampling)
+- Automatic HTTP request tracking
+
+**Configuration:**
+```javascript
+// instrument.js
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV,
+  tracesSampleRate: isProd ? 0.1 : 1.0,
+  profilesSampleRate: isProd ? 0.1 : 1.0,
+});
+```
+
 ## CI/CD Pipeline
 
 GitHub Actions runs on push/PR:
 
 - **Lint**: Prettier + ESLint (blocks merge if fails)
-- **Test**: Jest for cloud_api, pytest for native_host
+- **Test**: Jest for cloud_api (21 tests, min 84% coverage), pytest for native_host
 - **Security**: CodeQL, npm audit, Snyk, dependency review
 - **Deploy**: Docker build → Railway/Render (main branch only)
 
@@ -199,3 +275,9 @@ Required secrets for deployment: `DOCKER_USERNAME`, `DOCKER_PASSWORD`, `RAILWAY_
 6. **Rate limit: 1 request per 10 seconds** per video ID
 7. **Service worker imports**: Use `importScripts()` not ES6 imports
 8. **Native host logs**: stderr only (stdout reserved for protocol)
+9. **Logging**: Use `logger.info()`, `logger.error()`, NOT `console.log()`
+10. **Error context**: Always include relevant data in log objects: `logger.error({ url, error }, "msg")`
+11. **Sentry breadcrumbs**: Add for important API calls: `Sentry.addBreadcrumb({ message, data })`
+12. **Test mode**: Set `NODE_ENV=test` to silence logs in test suite
+13. **instrument.js**: MUST be first require in server.js (before other imports)
+14. **Error handler order**: Sentry handler must come AFTER all routes, BEFORE custom error handler
