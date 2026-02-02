@@ -2,7 +2,8 @@
 
 ## Overview
 
-Non-blocking, fault-tolerant, horizontally scalable Node.js API for YouTube video size extraction using yt-dlp.
+Non-blocking, fault-tolerant, horizontally scalable Node.js API for YouTube video size extraction
+using yt-dlp.
 
 ## Architecture
 
@@ -63,6 +64,7 @@ Non-blocking, fault-tolerant, horizontally scalable Node.js API for YouTube vide
 ```
 
 **Key Features:**
+
 - **Load Balancing**: Distributes traffic across multiple API instances
 - **Distributed Rate Limiting**: Redis-backed rate limiter works across all instances
 - **High Availability**: No single point of failure
@@ -219,10 +221,12 @@ REDIS_URL=rediss://:password@redis.example.com:6379
 ```
 
 **Without Redis**, each instance maintains its own in-memory rate limit counters, which means:
+
 - ❌ Users can exceed rate limits by hitting different instances
 - ❌ Not suitable for production horizontal scaling
 
 **With Redis**, all instances share rate limit state:
+
 - ✅ Rate limits enforced globally across all instances
 - ✅ Production-ready horizontal scaling
 - ✅ Automatic failover: Falls back to memory if Redis unavailable

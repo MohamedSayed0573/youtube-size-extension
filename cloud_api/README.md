@@ -1,6 +1,7 @@
 # Cloud API - YouTube Size Extension
 
-Non-blocking, fault-tolerant, horizontally scalable Node.js API for extracting YouTube video size information using yt-dlp.
+Non-blocking, fault-tolerant, horizontally scalable Node.js API for extracting YouTube video size
+information using yt-dlp.
 
 ## Features
 
@@ -16,7 +17,7 @@ Non-blocking, fault-tolerant, horizontally scalable Node.js API for extracting Y
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - yt-dlp installed and in PATH
 - Redis (optional, required for multi-instance deployments)
 
@@ -57,11 +58,11 @@ npm run test:watch
 ### Core
 
 - **POST /api/v1/size** - Extract video sizes
-  ```bash
-  curl -X POST http://localhost:3000/api/v1/size \
-    -H "Content-Type: application/json" \
-    -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'
-  ```
+    ```bash
+    curl -X POST http://localhost:3000/api/v1/size \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'
+    ```
 
 ### Health & Monitoring
 
@@ -108,6 +109,7 @@ docker-compose up -d
 ```
 
 This starts:
+
 - 3 API instances
 - Redis for distributed rate limiting
 - nginx load balancer
@@ -161,6 +163,7 @@ curl http://localhost:3000/api/v1/metrics
 ### Sentry Dashboard
 
 Error tracking and performance monitoring:
+
 - Issues: https://mohamed-sayed-dx.sentry.io/issues/
 - Performance: Track API response times
 - Releases: Track errors by deployment version
@@ -199,6 +202,7 @@ curl http://localhost:3000/health/redis
 **Problem**: Circuit breaker state is "OPEN", causing 503 errors
 
 **Causes**:
+
 - yt-dlp not installed
 - YouTube rate limiting
 - Network issues
@@ -221,6 +225,7 @@ journalctl -u ytdlp-api -f | grep -i circuit
 **Problem**: API instances consuming too much memory
 
 **Solutions**:
+
 - Reduce `MAX_WORKERS` (fewer concurrent yt-dlp processes)
 - Reduce `YTDLP_MAX_BUFFER` (less memory per request)
 - Enable worker recycling (already enabled: 100 tasks/worker)
@@ -231,11 +236,13 @@ journalctl -u ytdlp-api -f | grep -i circuit
 ### Benchmarks
 
 Single instance (4 CPU cores):
+
 - **Throughput**: 10-20 requests/second
 - **Response time**: p50=2s, p95=5s, p99=10s
 - **Worker utilization**: 60-80% under load
 
 Horizontal scaling (3 instances):
+
 - **Throughput**: 30-60 requests/second
 - **Response time**: p50=2s, p95=4s, p99=8s (better due to load distribution)
 

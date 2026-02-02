@@ -1,6 +1,7 @@
 # Horizontal Scaling Guide
 
-This guide explains how to deploy the YouTube Size Extension Cloud API in a horizontally scaled configuration with multiple instances, distributed rate limiting, and load balancing.
+This guide explains how to deploy the YouTube Size Extension Cloud API in a horizontally scaled
+configuration with multiple instances, distributed rate limiting, and load balancing.
 
 ## Table of Contents
 
@@ -19,12 +20,14 @@ This guide explains how to deploy the YouTube Size Extension Cloud API in a hori
 ### Why Horizontal Scaling?
 
 Single-instance deployments have limitations:
+
 - **In-memory rate limiting** doesn't work across instances
 - **Worker pool** is limited to single machine's CPU cores
 - **Single point of failure** affects availability
 - **Vertical scaling** has physical limits and higher costs
 
 Horizontal scaling solves these issues by:
+
 - Distributing load across multiple servers
 - Providing redundancy and high availability
 - Enabling independent scaling of components
@@ -117,6 +120,7 @@ redis-cli -h localhost -a YOUR_STRONG_PASSWORD_HERE ping
 **Best for**: Production, large deployments (5+ API instances)
 
 Use managed Redis services:
+
 - **AWS ElastiCache** (recommended)
 - **Azure Cache for Redis**
 - **Google Cloud Memorystore**
@@ -251,130 +255,130 @@ sudo systemctl status ytdlp-api
 **docker-compose.yml** (3 API instances + Redis):
 
 ```yaml
-version: '3.8'
+version: "3.8"
 
 services:
-  # Redis for distributed rate limiting
-  redis:
-    image: redis:7-alpine
-    command: redis-server --requirepass ${REDIS_PASSWORD}
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    restart: unless-stopped
-    networks:
-      - api-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
+    # Redis for distributed rate limiting
+    redis:
+        image: redis:7-alpine
+        command: redis-server --requirepass ${REDIS_PASSWORD}
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis-data:/data
+        restart: unless-stopped
+        networks:
+            - api-network
+        healthcheck:
+            test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 3
 
-  # API Instance 1
-  api1:
-    build: .
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - REDIS_ENABLED=true
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
-      - REQUIRE_AUTH=${REQUIRE_AUTH}
-      - API_KEY=${API_KEY}
-      - RATE_LIMIT_WINDOW_MS=60000
-      - RATE_LIMIT_MAX_REQUESTS=20
-      - SENTRY_DSN=${SENTRY_DSN}
-    ports:
-      - "3001:3000"
-    depends_on:
-      - redis
-    restart: unless-stopped
-    networks:
-      - api-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # API Instance 1
+    api1:
+        build: .
+        environment:
+            - NODE_ENV=production
+            - PORT=3000
+            - REDIS_ENABLED=true
+            - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+            - REQUIRE_AUTH=${REQUIRE_AUTH}
+            - API_KEY=${API_KEY}
+            - RATE_LIMIT_WINDOW_MS=60000
+            - RATE_LIMIT_MAX_REQUESTS=20
+            - SENTRY_DSN=${SENTRY_DSN}
+        ports:
+            - "3001:3000"
+        depends_on:
+            - redis
+        restart: unless-stopped
+        networks:
+            - api-network
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
 
-  # API Instance 2
-  api2:
-    build: .
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - REDIS_ENABLED=true
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
-      - REQUIRE_AUTH=${REQUIRE_AUTH}
-      - API_KEY=${API_KEY}
-      - RATE_LIMIT_WINDOW_MS=60000
-      - RATE_LIMIT_MAX_REQUESTS=20
-      - SENTRY_DSN=${SENTRY_DSN}
-    ports:
-      - "3002:3000"
-    depends_on:
-      - redis
-    restart: unless-stopped
-    networks:
-      - api-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # API Instance 2
+    api2:
+        build: .
+        environment:
+            - NODE_ENV=production
+            - PORT=3000
+            - REDIS_ENABLED=true
+            - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+            - REQUIRE_AUTH=${REQUIRE_AUTH}
+            - API_KEY=${API_KEY}
+            - RATE_LIMIT_WINDOW_MS=60000
+            - RATE_LIMIT_MAX_REQUESTS=20
+            - SENTRY_DSN=${SENTRY_DSN}
+        ports:
+            - "3002:3000"
+        depends_on:
+            - redis
+        restart: unless-stopped
+        networks:
+            - api-network
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
 
-  # API Instance 3
-  api3:
-    build: .
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - REDIS_ENABLED=true
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
-      - REQUIRE_AUTH=${REQUIRE_AUTH}
-      - API_KEY=${API_KEY}
-      - RATE_LIMIT_WINDOW_MS=60000
-      - RATE_LIMIT_MAX_REQUESTS=20
-      - SENTRY_DSN=${SENTRY_DSN}
-    ports:
-      - "3003:3000"
-    depends_on:
-      - redis
-    restart: unless-stopped
-    networks:
-      - api-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # API Instance 3
+    api3:
+        build: .
+        environment:
+            - NODE_ENV=production
+            - PORT=3000
+            - REDIS_ENABLED=true
+            - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+            - REQUIRE_AUTH=${REQUIRE_AUTH}
+            - API_KEY=${API_KEY}
+            - RATE_LIMIT_WINDOW_MS=60000
+            - RATE_LIMIT_MAX_REQUESTS=20
+            - SENTRY_DSN=${SENTRY_DSN}
+        ports:
+            - "3003:3000"
+        depends_on:
+            - redis
+        restart: unless-stopped
+        networks:
+            - api-network
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
 
-  # nginx Load Balancer
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - api1
-      - api2
-      - api3
-    restart: unless-stopped
-    networks:
-      - api-network
+    # nginx Load Balancer
+    nginx:
+        image: nginx:alpine
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./nginx.conf:/etc/nginx/nginx.conf:ro
+            - ./ssl:/etc/nginx/ssl:ro
+        depends_on:
+            - api1
+            - api2
+            - api3
+        restart: unless-stopped
+        networks:
+            - api-network
 
 networks:
-  api-network:
-    driver: bridge
+    api-network:
+        driver: bridge
 
 volumes:
-  redis-data:
+    redis-data:
 ```
 
 **.env** file:
@@ -401,6 +405,7 @@ docker-compose logs -f
 Use the provided `nginx.conf` configuration file.
 
 **Key features**:
+
 - Round-robin or least-connections load balancing
 - Active health checks on `/health` endpoint
 - Request ID injection for distributed tracing
@@ -442,6 +447,7 @@ upstream ytdlp_api_backend {
 Use the provided `haproxy.cfg` configuration file.
 
 **Key features**:
+
 - Layer 7 (HTTP) load balancing
 - Least-connections algorithm
 - Active health checks
@@ -488,76 +494,83 @@ backend api_backend
 ### Step-by-Step Deployment
 
 1. **Deploy Redis**:
-   ```bash
-   # Start Redis server or use managed service
-   sudo systemctl start redis-server
-   ```
+
+    ```bash
+    # Start Redis server or use managed service
+    sudo systemctl start redis-server
+    ```
 
 2. **Configure API instances**:
-   ```bash
-   # On each API server
-   cd /opt/ytdlp-api
-   cp .env.example .env
-   nano .env  # Configure REDIS_URL and other variables
-   ```
+
+    ```bash
+    # On each API server
+    cd /opt/ytdlp-api
+    cp .env.example .env
+    nano .env  # Configure REDIS_URL and other variables
+    ```
 
 3. **Start API instances**:
-   ```bash
-   # Using systemd
-   sudo systemctl start ytdlp-api
-   
-   # OR using Docker
-   docker-compose up -d
-   ```
+
+    ```bash
+    # Using systemd
+    sudo systemctl start ytdlp-api
+
+    # OR using Docker
+    docker-compose up -d
+    ```
 
 4. **Verify API instances**:
-   ```bash
-   # Check each instance
-   curl http://api1.example.com:3000/health
-   curl http://api2.example.com:3000/health
-   curl http://api3.example.com:3000/health
-   ```
+
+    ```bash
+    # Check each instance
+    curl http://api1.example.com:3000/health
+    curl http://api2.example.com:3000/health
+    curl http://api3.example.com:3000/health
+    ```
 
 5. **Configure load balancer**:
-   ```bash
-   # nginx
-   sudo nano /etc/nginx/sites-available/ytdlp-api
-   sudo nginx -t && sudo systemctl reload nginx
-   
-   # OR HAProxy
-   sudo nano /etc/haproxy/haproxy.cfg
-   sudo haproxy -c -f /etc/haproxy/haproxy.cfg && sudo systemctl restart haproxy
-   ```
+
+    ```bash
+    # nginx
+    sudo nano /etc/nginx/sites-available/ytdlp-api
+    sudo nginx -t && sudo systemctl reload nginx
+
+    # OR HAProxy
+    sudo nano /etc/haproxy/haproxy.cfg
+    sudo haproxy -c -f /etc/haproxy/haproxy.cfg && sudo systemctl restart haproxy
+    ```
 
 6. **Test load balancer**:
-   ```bash
-   # Check root endpoint
-   curl http://load-balancer.example.com/
-   
-   # Check health
-   curl http://load-balancer.example.com/health
-   
-   # Check Redis health
-   curl http://load-balancer.example.com/health/redis
-   
-   # Test API (replace with your video URL)
-   curl -X POST http://load-balancer.example.com/api/v1/size \
-     -H "Content-Type: application/json" \
-     -H "X-API-Key: your-api-key" \
-     -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'
-   ```
+
+    ```bash
+    # Check root endpoint
+    curl http://load-balancer.example.com/
+
+    # Check health
+    curl http://load-balancer.example.com/health
+
+    # Check Redis health
+    curl http://load-balancer.example.com/health/redis
+
+    # Test API (replace with your video URL)
+    curl -X POST http://load-balancer.example.com/api/v1/size \
+      -H "Content-Type: application/json" \
+      -H "X-API-Key: your-api-key" \
+      -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'
+    ```
 
 7. **Verify distributed rate limiting**:
-   ```bash
-   # Make 25 requests quickly (should hit rate limit at 20)
-   for i in {1..25}; do
-     curl -X POST http://load-balancer.example.com/api/v1/size \
-       -H "Content-Type: application/json" \
-       -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}' &
-   done
-   
-   # Expected: First 20 succeed, last 5 return 429 Too Many Requests
-   ```
+
+    ```bash
+    # Make 25 requests quickly (should hit rate limit at 20)
+    for i in {1..25}; do
+      curl -X POST http://load-balancer.example.com/api/v1/size \
+        -H "Content-Type: application/json" \
+        -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}' &
+    done
+
+    # Expected: First 20 succeed, last 5 return 429 Too Many Requests
+    ```
 
 ### Scaling Up/Down
 
@@ -593,27 +606,27 @@ backend api_backend
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: ytdlp-api-hpa
+    name: ytdlp-api-hpa
 spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: ytdlp-api
-  minReplicas: 2
-  maxReplicas: 10
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
+    scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: ytdlp-api
+    minReplicas: 2
+    maxReplicas: 10
+    metrics:
+        - type: Resource
+          resource:
+              name: cpu
+              target:
+                  type: Utilization
+                  averageUtilization: 70
+        - type: Resource
+          resource:
+              name: memory
+              target:
+                  type: Utilization
+                  averageUtilization: 80
 ```
 
 ## Monitoring
@@ -621,16 +634,17 @@ spec:
 ### Health Checks
 
 1. **API health**: `GET /health`
-   - Returns: system metrics, worker pool stats, circuit breaker status
-   - Use for: Load balancer health probes, monitoring alerts
+    - Returns: system metrics, worker pool stats, circuit breaker status
+    - Use for: Load balancer health probes, monitoring alerts
 
 2. **Redis health**: `GET /health/redis`
-   - Returns: Redis connectivity status
-   - Use for: Redis-specific monitoring
+    - Returns: Redis connectivity status
+    - Use for: Redis-specific monitoring
 
 ### Metrics to Monitor
 
 **Per-instance metrics**:
+
 - CPU usage (target: <70%)
 - Memory usage (target: <80%)
 - Active worker threads
@@ -640,6 +654,7 @@ spec:
 - Response time (p50, p95, p99)
 
 **Cluster-wide metrics**:
+
 - Total request rate
 - Rate limit rejections
 - Load balancer distribution
@@ -647,6 +662,7 @@ spec:
 - Redis memory usage
 
 **Redis metrics**:
+
 - Memory usage
 - Hit/miss ratio
 - Connection count
@@ -660,22 +676,24 @@ spec:
 ```yaml
 # prometheus.yml
 scrape_configs:
-  - job_name: 'ytdlp-api'
-    static_configs:
-      - targets:
-        - 'api1.example.com:3000'
-        - 'api2.example.com:3000'
-        - 'api3.example.com:3000'
-    metrics_path: '/api/v1/metrics'
+    - job_name: "ytdlp-api"
+      static_configs:
+          - targets:
+                - "api1.example.com:3000"
+                - "api2.example.com:3000"
+                - "api3.example.com:3000"
+      metrics_path: "/api/v1/metrics"
 ```
 
 **Sentry** (already integrated):
+
 - Error tracking
 - Performance monitoring
 - Release tracking
 - Custom alerts
 
 **CloudWatch / Datadog / New Relic**:
+
 - Infrastructure monitoring
 - Application performance monitoring (APM)
 - Log aggregation
@@ -686,6 +704,7 @@ scrape_configs:
 Centralize logs from all instances:
 
 **ELK Stack** (Elasticsearch, Logstash, Kibana):
+
 ```bash
 # Install filebeat on each API instance
 sudo apt install filebeat
@@ -694,6 +713,7 @@ sudo nano /etc/filebeat/filebeat.yml
 ```
 
 **Loki + Grafana**:
+
 ```bash
 # Install promtail on each API instance
 # Configure to send logs to Loki
@@ -717,6 +737,7 @@ journalctl -u ytdlp-api -f | grep -i redis
 ```
 
 **Solutions**:
+
 - Verify `REDIS_URL` environment variable
 - Check network connectivity (firewall rules)
 - Verify Redis password
@@ -727,6 +748,7 @@ journalctl -u ytdlp-api -f | grep -i redis
 **Symptom**: Some instances receiving more traffic than others
 
 **Check load balancer stats**:
+
 ```bash
 # nginx
 curl http://localhost:8080/nginx_status
@@ -736,6 +758,7 @@ curl http://localhost:8404/stats
 ```
 
 **Solutions**:
+
 - Switch from round-robin to least-connections
 - Verify all instances are healthy
 - Check for CPU/memory differences between instances
@@ -746,6 +769,7 @@ curl http://localhost:8404/stats
 **Symptom**: Users can exceed rate limit by hitting different instances
 
 **Verify**:
+
 ```bash
 # Check Redis keys
 redis-cli -a YOUR_PASSWORD
@@ -757,6 +781,7 @@ docker-compose logs api1 | grep -i redis
 ```
 
 **Solutions**:
+
 - Verify `REDIS_ENABLED=true` on all instances
 - Check Redis connectivity
 - Ensure all instances use same `REDIS_URL`
@@ -767,6 +792,7 @@ docker-compose logs api1 | grep -i redis
 **Symptom**: Circuit breaker opens, causing 503 errors
 
 **Check**:
+
 ```bash
 # Check circuit breaker status
 curl http://load-balancer.example.com/api/v1/metrics
@@ -776,6 +802,7 @@ yt-dlp --version
 ```
 
 **Solutions**:
+
 - Verify yt-dlp is installed on all instances
 - Check yt-dlp rate limiting from YouTube
 - Increase circuit breaker thresholds (not recommended)
@@ -786,6 +813,7 @@ yt-dlp --version
 **Symptom**: API instances running out of memory
 
 **Check**:
+
 ```bash
 # Check memory usage
 free -h
@@ -796,6 +824,7 @@ curl http://localhost:3000/api/v1/metrics | jq '.process.memory'
 ```
 
 **Solutions**:
+
 - Reduce `MAX_WORKERS` (fewer worker threads)
 - Reduce `YTDLP_MAX_BUFFER` (less buffer per request)
 - Increase instance memory
@@ -819,15 +848,16 @@ curl http://localhost:3000/api/v1/metrics | jq '.process.memory'
 
 **Estimated monthly costs** (AWS us-east-1):
 
-| Component | Size | Monthly Cost |
-|-----------|------|--------------|
-| 3x EC2 t3.medium | 2 vCPU, 4GB RAM | $100 |
-| ElastiCache Redis t3.micro | 2 replicas | $30 |
-| Application Load Balancer | | $20 |
-| Data transfer (100GB) | | $10 |
-| **Total** | | **~$160/month** |
+| Component                  | Size            | Monthly Cost    |
+| -------------------------- | --------------- | --------------- |
+| 3x EC2 t3.medium           | 2 vCPU, 4GB RAM | $100            |
+| ElastiCache Redis t3.micro | 2 replicas      | $30             |
+| Application Load Balancer  |                 | $20             |
+| Data transfer (100GB)      |                 | $10             |
+| **Total**                  |                 | **~$160/month** |
 
 **Cost reduction tips**:
+
 - Use Reserved Instances (40% savings)
 - Right-size instances based on metrics
 - Use spot instances for non-critical workloads
@@ -837,6 +867,7 @@ curl http://localhost:3000/api/v1/metrics | jq '.process.memory'
 ## Conclusion
 
 This horizontal scaling setup provides:
+
 - ✅ **High availability**: No single point of failure
 - ✅ **Distributed rate limiting**: Works across all instances
 - ✅ **Load balancing**: Automatic traffic distribution

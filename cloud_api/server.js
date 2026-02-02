@@ -317,36 +317,108 @@ circuitBreaker.on("half_open", ({ previousState, timestamp }) => {
 });
 
 // Graceful shutdown handling
+let isShuttingDown = false;
+const activeConnections = new Set();
+
 const shutdown = async (signal) => {
-    logger.info({ signal }, "Shutdown signal received");
-
-    // Close HTTP server first (stop accepting new connections)
-    if (server) {
-        await new Promise((resolve) => {
-            server.close(resolve);
-        });
-        logger.info("HTTP server closed");
+    if (isShuttingDown) {
+        logger.warn({ signal }, "Shutdown already in progress, forcing exit");
+        process.exit(1);
     }
 
-    // Shutdown worker pool (wait for active tasks)
+    isShuttingDown = true;
+    logger.info(
+        {
+            signal,
+            activeConnections: activeConnections.size,
+            workerPoolStats: workerPool.getStats(),
+        },
+        "Graceful shutdown initiated"
+    );
+
+    // Set shutdown timeout
+    const shutdownTimeout = setTimeout(() => {
+        logger.error(
+            { timeout: TIMEOUTS.SHUTDOWN_GRACE },
+            "Shutdown timeout exceeded, forcing exit"
+        );
+        process.exit(1);
+    }, TIMEOUTS.SHUTDOWN_GRACE + 5000); // Extra 5s buffer
+
     try {
-        await workerPool.shutdown(TIMEOUTS.SHUTDOWN_GRACE);
-        logger.info("Worker pool shutdown complete");
-    } catch (error) {
-        logger.error({ error: error.message }, "Worker pool shutdown error");
-    }
-
-    // Close Redis connection
-    if (redisClient) {
-        try {
-            await redisClient.quit();
-            logger.info("Redis connection closed");
-        } catch (error) {
-            logger.error({ error: error.message }, "Redis shutdown error");
+        // Step 1: Stop accepting new connections
+        if (server) {
+            logger.info("Stopping HTTP server (closing listener)");
+            await new Promise((resolve) => {
+                server.close(resolve);
+            });
+            logger.info("HTTP server closed - no new connections accepted");
         }
-    }
 
-    process.exit(0);
+        // Step 2: Wait for active connections to finish (with timeout)
+        const connectionDrainStart = Date.now();
+        const maxConnectionDrain = 5000; // 5 seconds max
+        
+        while (activeConnections.size > 0 && (Date.now() - connectionDrainStart) < maxConnectionDrain) {
+            logger.info(
+                { activeConnections: activeConnections.size },
+                "Waiting for active connections to drain"
+            );
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+
+        if (activeConnections.size > 0) {
+            logger.warn(
+                { remainingConnections: activeConnections.size },
+                "Some connections did not finish in time"
+            );
+        } else {
+            logger.info("All active connections drained");
+        }
+
+        // Step 3: Shutdown worker pool (wait for active tasks)
+        try {
+            logger.info(
+                { stats: workerPool.getStats() },
+                "Shutting down worker pool"
+            );
+            await workerPool.shutdown(TIMEOUTS.SHUTDOWN_GRACE);
+            logger.info("Worker pool shutdown complete");
+        } catch (error) {
+            logger.error(
+                { error: error.message },
+                "Worker pool shutdown error"
+            );
+        }
+
+        // Step 4: Close Redis connection
+        if (redisClient) {
+            try {
+                logger.info("Closing Redis connection");
+                await redisClient.quit();
+                logger.info("Redis connection closed");
+            } catch (error) {
+                logger.error({ error: error.message }, "Redis shutdown error");
+            }
+        }
+
+        // Step 5: Flush Sentry events
+        try {
+            logger.info("Flushing Sentry events");
+            await Sentry.close(2000);
+            logger.info("Sentry events flushed");
+        } catch (error) {
+            logger.error({ error: error.message }, "Sentry flush error");
+        }
+
+        clearTimeout(shutdownTimeout);
+        logger.info({ signal }, "Graceful shutdown completed successfully");
+        process.exit(0);
+    } catch (error) {
+        clearTimeout(shutdownTimeout);
+        logger.fatal({ error: error.message }, "Fatal error during shutdown");
+        process.exit(1);
+    }
 };
 
 // Handle uncaught exceptions gracefully
@@ -388,6 +460,91 @@ app.use((req, res, next) => {
 
     // Add to logger context
     req.log = logger.child({ requestId });
+
+    next();
+});
+
+/**
+ * Request/Response logging middleware
+ * Logs all incoming requests and outgoing responses with timing information
+ */
+app.use((req, res, next) => {
+    const startTime = Date.now();
+    const startHrTime = process.hrtime();
+
+    // Track active connection
+    const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    activeConnections.add(connectionId);
+
+    // Log incoming request
+    req.log.info(
+        {
+            method: req.method,
+            url: req.url,
+            path: req.path,
+            query: req.query,
+            ip: req.ip,
+            userAgent: req.get('user-agent'),
+            contentType: req.get('content-type'),
+            contentLength: req.get('content-length'),
+            connectionId,
+        },
+        'Incoming request'
+    );
+
+    // Capture original end function
+    const originalEnd = res.end;
+
+    // Override end function to log response
+    res.end = function (chunk, encoding) {
+        // Remove from active connections
+        activeConnections.delete(connectionId);
+
+        const hrDuration = process.hrtime(startHrTime);
+        const duration = Date.now() - startTime;
+        const durationMs = hrDuration[0] * 1000 + hrDuration[1] / 1000000;
+
+        // Log response
+        const logData = {
+            method: req.method,
+            url: req.url,
+            statusCode: res.statusCode,
+            duration: `${duration}ms`,
+            durationPrecise: `${durationMs.toFixed(2)}ms`,
+            contentLength: res.get('content-length'),
+            connectionId,
+        };
+
+        if (res.statusCode >= 500) {
+            req.log.error(logData, 'Request failed');
+        } else if (res.statusCode >= 400) {
+            req.log.warn(logData, 'Request error');
+        } else {
+            req.log.info(logData, 'Request completed');
+        }
+
+        // Track performance metrics
+        Sentry.addBreadcrumb({
+            category: 'http',
+            message: `${req.method} ${req.url}`,
+            level: res.statusCode >= 400 ? 'error' : 'info',
+            data: logData,
+        });
+
+        // Call original end
+        originalEnd.call(this, chunk, encoding);
+    };
+
+    // Check if shutting down
+    if (isShuttingDown) {
+        res.setHeader('Connection', 'close');
+        res.status(503).json({
+            ok: false,
+            error: 'Server is shutting down',
+        });
+        activeConnections.delete(connectionId);
+        return;
+    }
 
     next();
 });
@@ -668,6 +825,30 @@ async function extractInfo(url, maxRetries = 2) {
     }
 
     // All retries exhausted - format error message
+    logger.error(
+        {
+            url,
+            attempts: maxRetries + 1,
+            lastError: lastError.message,
+            code: lastError.code,
+        },
+        'All retry attempts exhausted for video extraction'
+    );
+
+    Sentry.captureException(lastError, {
+        tags: {
+            component: 'yt-dlp',
+            errorType: lastError.code || 'UNKNOWN',
+        },
+        contexts: {
+            extraction: {
+                url,
+                attempts: maxRetries + 1,
+                durationHint,
+            },
+        },
+    });
+
     if (lastError.code === "TIMEOUT") {
         throw new Error("yt-dlp timed out while fetching metadata");
     }
@@ -1280,6 +1461,10 @@ if (CONFIG.NODE_ENV !== "test") {
                 environment: CONFIG.NODE_ENV,
                 authRequired: CONFIG.REQUIRE_AUTH,
                 rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min`,
+                redis: {
+                    enabled: CONFIG.REDIS_ENABLED,
+                    connected: redisReady,
+                },
                 workerPool: {
                     min: workerPool.minWorkers,
                     max: workerPool.maxWorkers,
@@ -1291,12 +1476,42 @@ if (CONFIG.NODE_ENV !== "test") {
                 endpoints: [
                     "/",
                     "/health",
+                    "/health/redis",
                     "/api/v1/size",
                     "/api/v1/docs",
+                    "/api/v1/openapi",
                     "/api/v1/metrics",
                 ],
             },
             "Server started successfully with worker pool and circuit breaker"
         );
+
+        // Log Redis status
+        if (CONFIG.REDIS_ENABLED) {
+            if (redisReady) {
+                logger.info("✓ Redis distributed rate limiting active");
+            } else {
+                logger.warn("⚠ Redis enabled but not connected - using memory fallback");
+            }
+        } else {
+            logger.warn("⚠ Redis disabled - in-memory rate limiting (not suitable for horizontal scaling)");
+        }
+
+        // Log startup banner
+        logger.info("═".repeat(60));
+        logger.info(`  YouTube Size Extension - Cloud API v${CONFIG.API_VERSION}`);
+        logger.info(`  Listening on http://0.0.0.0:${CONFIG.PORT}`);
+        logger.info(`  Environment: ${CONFIG.NODE_ENV}`);
+        logger.info(`  Worker Pool: ${workerPool.minWorkers}-${workerPool.maxWorkers} workers`);
+        logger.info(`  Circuit Breaker: Enabled (threshold: ${circuitBreaker.failureThreshold})`);
+        logger.info(`  Distributed Rate Limiting: ${CONFIG.REDIS_ENABLED ? '✓ Enabled' : '✗ Disabled'}`);
+        logger.info("═".repeat(60));
+    });
+
+    // Track server connections for graceful shutdown
+    server.on('connection', (socket) => {
+        socket.on('close', () => {
+            // Connection closed naturally
+        });
     });
 }
