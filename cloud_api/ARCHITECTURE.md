@@ -2,11 +2,11 @@
 
 ## Overview
 
-Non-blocking, fault-tolerant Node.js API for YouTube video size extraction using yt-dlp.
+Non-blocking, fault-tolerant, horizontally scalable Node.js API for YouTube video size extraction using yt-dlp.
 
 ## Architecture
 
-### Components
+### Single-Instance Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -35,6 +35,41 @@ Non-blocking, fault-tolerant Node.js API for YouTube video size extraction using
     │  #1  │  │  #2  │  │  #n  │        in subprocess
     └──────┘  └──────┘  └──────┘
 ```
+
+### Horizontal Scaling Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                      Load Balancer                           │
+│                  (nginx or HAProxy)                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │ Health Check │  │ Rate Limiting│  │Request Routing│       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
+└────┬─────────────────────┬─────────────────────┬────────────┘
+     │                     │                     │
+     ▼                     ▼                     ▼
+┌─────────┐          ┌─────────┐          ┌─────────┐
+│ API #1  │          │ API #2  │          │ API #3  │
+│ :3000   │          │ :3000   │          │ :3000   │
+└────┬────┘          └────┬────┘          └────┬────┘
+     │                    │                    │
+     └────────────────────┼────────────────────┘
+                          │
+                          ▼
+                   ┌─────────────┐
+                   │    Redis    │◄──── Distributed rate limiting
+                   │   Cluster   │      Shared state across instances
+                   └─────────────┘
+```
+
+**Key Features:**
+- **Load Balancing**: Distributes traffic across multiple API instances
+- **Distributed Rate Limiting**: Redis-backed rate limiter works across all instances
+- **High Availability**: No single point of failure
+- **Auto-scaling**: Add/remove instances based on load
+- **Health Checks**: Automatic failover for unhealthy instances
+
+See [SCALING.md](./SCALING.md) for complete deployment guide.
 
 ### Worker Pool Pattern
 
@@ -122,11 +157,13 @@ breaker.on("closed", () => {
     - Request: `{ url: string, duration_hint?: number }`
     - Response: `{ ok: boolean, bytes: Object, human: Object, duration: number }`
 
-### Monitoring
+### Health & Monitoring
 
-- **GET /health** - System health + worker pool + circuit breaker status
+- **GET /health** - System health + worker pool + circuit breaker + Redis status
+- **GET /health/redis** - Redis connectivity check (for load balancer probes)
 - **GET /api/v1/metrics** - Detailed metrics
 - **GET /api/v1/docs** - API documentation
+- **GET /api/v1/openapi** - OpenAPI 3.0 specification
 
 ### Admin
 
@@ -152,9 +189,13 @@ API_KEY=your-secret-key
 # CORS
 ALLOWED_ORIGINS=*       # Comma-separated or *
 
-# Rate Limiting
+# Rate Limiting (in-memory or Redis-backed)
 RATE_LIMIT_WINDOW_MS=60000      # 1 minute
 RATE_LIMIT_MAX_REQUESTS=20      # 20 requests per window
+
+# Redis (for horizontal scaling)
+REDIS_ENABLED=false             # Set to true for distributed rate limiting
+REDIS_URL=redis://localhost:6379  # Redis connection URL
 
 # yt-dlp
 YTDLP_TIMEOUT=25000             # 25 seconds
@@ -163,6 +204,30 @@ YTDLP_MAX_BUFFER=10485760       # 10 MB
 # Monitoring
 SENTRY_DSN=https://...          # Optional error tracking
 ```
+
+### Horizontal Scaling Configuration
+
+For multi-instance deployments, **Redis is required** for distributed rate limiting:
+
+```bash
+# Enable Redis
+REDIS_ENABLED=true
+REDIS_URL=redis://:password@redis.example.com:6379
+
+# OR with TLS (AWS ElastiCache)
+REDIS_URL=rediss://:password@redis.example.com:6379
+```
+
+**Without Redis**, each instance maintains its own in-memory rate limit counters, which means:
+- ❌ Users can exceed rate limits by hitting different instances
+- ❌ Not suitable for production horizontal scaling
+
+**With Redis**, all instances share rate limit state:
+- ✅ Rate limits enforced globally across all instances
+- ✅ Production-ready horizontal scaling
+- ✅ Automatic failover: Falls back to memory if Redis unavailable
+
+See [SCALING.md](./SCALING.md) for complete setup guide.
 
 ## Deployment
 

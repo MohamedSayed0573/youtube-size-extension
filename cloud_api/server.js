@@ -29,6 +29,8 @@ const Sentry = require("@sentry/node");
 const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
+const RedisStore = require("rate-limit-redis");
+const redis = require("redis");
 const os = require("os");
 const { z } = require("zod");
 const pino = require("pino");
@@ -103,6 +105,13 @@ const envSchema = z
         RATE_LIMIT_WINDOW_MS: z.string().default("60000").transform(Number),
         RATE_LIMIT_MAX_REQUESTS: z.string().default("20").transform(Number),
 
+        // Redis configuration (for distributed rate limiting)
+        REDIS_URL: z.string().optional().default(""),
+        REDIS_ENABLED: z
+            .string()
+            .transform((val) => val === "true")
+            .default("false"),
+
         // yt-dlp configuration
         YTDLP_TIMEOUT: z
             .string()
@@ -159,6 +168,80 @@ try {
 }
 
 const app = express();
+
+// ============================================
+// Redis Client Setup (for distributed rate limiting)
+// ============================================
+
+let redisClient = null;
+let redisReady = false;
+
+if (CONFIG.REDIS_ENABLED && CONFIG.REDIS_URL) {
+    redisClient = redis.createClient({
+        url: CONFIG.REDIS_URL,
+        socket: {
+            reconnectStrategy: (retries) => {
+                if (retries > 10) {
+                    logger.error("Redis reconnect failed after 10 attempts");
+                    return new Error("Redis reconnect failed");
+                }
+                const delay = Math.min(retries * 100, 3000);
+                logger.info({ retries, delay }, "Redis reconnecting");
+                return delay;
+            },
+        },
+    });
+
+    redisClient.on("error", (err) => {
+        logger.error({ error: err.message }, "Redis client error");
+        redisReady = false;
+        Sentry.captureException(err, {
+            tags: { component: "redis" },
+        });
+    });
+
+    redisClient.on("connect", () => {
+        logger.info("Redis client connecting");
+    });
+
+    redisClient.on("ready", () => {
+        logger.info("Redis client ready");
+        redisReady = true;
+    });
+
+    redisClient.on("reconnecting", () => {
+        logger.warn("Redis client reconnecting");
+        redisReady = false;
+    });
+
+    redisClient.on("end", () => {
+        logger.info("Redis client disconnected");
+        redisReady = false;
+    });
+
+    // Connect to Redis
+    redisClient
+        .connect()
+        .then(() => {
+            logger.info(
+                { url: CONFIG.REDIS_URL },
+                "Redis connection established"
+            );
+        })
+        .catch((err) => {
+            logger.error(
+                { error: err.message },
+                "Failed to connect to Redis - falling back to memory store"
+            );
+            Sentry.captureException(err, {
+                tags: { component: "redis", severity: "warning" },
+            });
+        });
+} else {
+    logger.info(
+        "Redis not enabled - using in-memory rate limiting (not recommended for production with multiple instances)"
+    );
+}
 
 // ============================================
 // Worker Pool & Circuit Breaker Setup
@@ -253,6 +336,16 @@ const shutdown = async (signal) => {
         logger.error({ error: error.message }, "Worker pool shutdown error");
     }
 
+    // Close Redis connection
+    if (redisClient) {
+        try {
+            await redisClient.quit();
+            logger.info("Redis connection closed");
+        } catch (error) {
+            logger.error({ error: error.message }, "Redis shutdown error");
+        }
+    }
+
     process.exit(0);
 };
 
@@ -309,8 +402,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: LIMITS.REQUEST_BODY }));
 
-// Rate limiting configuration
-const apiLimiter = rateLimit({
+// Rate limiting configuration with Redis support
+const rateLimitConfig = {
     windowMs: CONFIG.RATE_LIMIT_WINDOW_MS,
     max: CONFIG.RATE_LIMIT_MAX_REQUESTS,
     message: {
@@ -320,7 +413,23 @@ const apiLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => CONFIG.NODE_ENV === "development" && !CONFIG.REQUIRE_AUTH,
-});
+};
+
+// Use Redis store if available, otherwise fall back to memory store
+if (redisClient && CONFIG.REDIS_ENABLED) {
+    rateLimitConfig.store = new RedisStore({
+        // @ts-expect-error - Known issue with the `call` function not present in @types/redis
+        sendCommand: (...args) => redisClient.sendCommand(args),
+        prefix: "rl:", // Redis key prefix for rate limiting
+    });
+    logger.info("Using Redis-backed rate limiting (distributed)");
+} else {
+    logger.warn(
+        "Using in-memory rate limiting - NOT suitable for horizontal scaling"
+    );
+}
+
+const apiLimiter = rateLimit(rateLimitConfig);
 
 // Map of interesting format ids by resolution
 const VIDEO_FORMAT_IDS = {
@@ -720,6 +829,49 @@ app.get("/", (req, res) => {
 });
 
 /**
+ * Redis health check endpoint
+ * Specifically checks Redis connectivity for load balancer health probes
+ */
+app.get("/health/redis", async (req, res) => {
+    if (!CONFIG.REDIS_ENABLED) {
+        return res.status(200).json({
+            ok: true,
+            redis: "disabled",
+            message: "Redis is not enabled",
+        });
+    }
+
+    if (!redisClient) {
+        return res.status(503).json({
+            ok: false,
+            redis: "not_configured",
+            message: "Redis client not initialized",
+        });
+    }
+
+    try {
+        // Test Redis connectivity with PING
+        const start = Date.now();
+        await redisClient.ping();
+        const latency = Date.now() - start;
+
+        res.json({
+            ok: true,
+            redis: "connected",
+            latency: `${latency}ms`,
+            ready: redisReady,
+        });
+    } catch (error) {
+        logger.error({ error: error.message }, "Redis health check failed");
+        res.status(503).json({
+            ok: false,
+            redis: "error",
+            error: error.message,
+        });
+    }
+});
+
+/**
  * Health check endpoint
  * Returns comprehensive system metrics, yt-dlp status, worker pool, and circuit breaker info
  */
@@ -800,7 +952,15 @@ app.get("/health", apiLimiter, async (req, res) => {
             dependencies: {
                 ytdlp: {
                     available: ytdlpAvailable,
+                    path: ytdlpPath,
                     version: ytdlpVersion,
+                },
+                redis: {
+                    enabled: CONFIG.REDIS_ENABLED,
+                    connected: redisReady,
+                    url: CONFIG.REDIS_URL
+                        ? CONFIG.REDIS_URL.replace(/:[^:@]*@/, ":***@")
+                        : "not configured",
                 },
             },
             workerPool: poolStats,
@@ -839,6 +999,7 @@ app.get("/api/v1/docs", (req, res) => {
             health: {
                 "GET /": "Root endpoint with basic info",
                 "GET /health": "Health check with system metrics",
+                "GET /health/redis": "Redis connectivity check",
                 "GET /api/v1/metrics":
                     "Worker pool and circuit breaker metrics",
                 "GET /api/v1/openapi": "OpenAPI 3.0 specification",
