@@ -19,6 +19,12 @@ process.env.RATE_LIMIT_MAX_REQUESTS = "100"; // High limit for tests
 const app = require("../server.js");
 
 describe("Cloud API Server", () => {
+    // Reset circuit breaker before each test to ensure isolation
+    beforeEach(() => {
+        if (app.circuitBreaker) {
+            app.circuitBreaker.reset();
+        }
+    });
     describe("Health Endpoints", () => {
         test("GET / should return service info", async () => {
             const response = await request(app).get("/");

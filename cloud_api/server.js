@@ -340,9 +340,13 @@ app.use(errorHandler(logger));
 
 let server;
 
-// Export app for testing
+// Export app and dependencies for testing
 if (typeof module !== "undefined" && module.exports) {
     module.exports = app;
+    // Export for test isolation
+    module.exports.circuitBreaker = circuitBreaker;
+    module.exports.workerPool = workerPool;
+    module.exports.redisClient = redisClient;
 }
 
 // Only start server if not in test mode

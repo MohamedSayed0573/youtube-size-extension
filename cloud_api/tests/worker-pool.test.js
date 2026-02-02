@@ -210,6 +210,13 @@ describe("Integration Tests", () => {
         app = require("../server");
     });
 
+    // Reset circuit breaker before each test
+    beforeEach(() => {
+        if (app.circuitBreaker) {
+            app.circuitBreaker.reset();
+        }
+    });
+
     test("GET /health should include worker pool and circuit breaker status", async () => {
         const response = await request(app).get("/health/main");
 

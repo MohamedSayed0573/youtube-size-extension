@@ -51,7 +51,16 @@ afterAll(async () => {
 // Import app after environment setup
 const app = require("../server.js");
 
+// Increase timeout for integration tests (real API calls)
+jest.setTimeout(60000);
+
 describe("Integration Tests", () => {
+    // Reset circuit breaker before each test to ensure isolation
+    beforeEach(() => {
+        if (app.circuitBreaker) {
+            app.circuitBreaker.reset();
+        }
+    });
     describe("End-to-End API Workflow", () => {
         test("should successfully extract video size information", async () => {
             const testUrl = "https://www.youtube.com/watch?v=jNQXAC9IVRw"; // "Me at the zoo"
@@ -73,7 +82,10 @@ describe("Integration Tests", () => {
             // Verify human-readable format
             expect(typeof response.body.human).toBe("object");
             Object.values(response.body.human).forEach((value) => {
-                expect(value).toMatch(/\d+(\.\d+)?\s*(B|KB|MB|GB)/);
+                // Some formats may not be available (null is valid)
+                if (value !== null) {
+                    expect(value).toMatch(/\d+(\.\d+)?\s*(B|KB|MB|GB)/);
+                }
             });
 
             // Verify duration is positive
