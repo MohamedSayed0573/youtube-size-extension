@@ -160,7 +160,8 @@ describe("Cloud API Server", () => {
                 expect(response.body).toHaveProperty("ok", false);
             });
 
-            test("should accept valid YouTube watch URL", async () => {
+            test.skip("should accept valid YouTube watch URL", async () => {
+                // Skipped: Makes real yt-dlp call (takes 8+ seconds)
                 const response = await request(app)
                     .post("/api/v1/size")
                     .send({ url: "https://youtube.com/watch?v=dQw4w9WgXcQ" });
