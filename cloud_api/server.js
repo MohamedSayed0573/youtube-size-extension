@@ -26,10 +26,7 @@ const {
 } = require("./middleware/logging");
 const { createAuthMiddleware } = require("./middleware/auth");
 const { createRateLimiter } = require("./middleware/rate-limit");
-const {
-    notFoundHandler,
-    errorHandler,
-} = require("./middleware/error-handler");
+const { notFoundHandler, errorHandler } = require("./middleware/error-handler");
 
 // Routes
 const { createHealthRoutes } = require("./routes/health");
@@ -200,7 +197,10 @@ const shutdown = async (signal) => {
             await workerPool.shutdown(TIMEOUTS.SHUTDOWN_GRACE);
             logger.info("Worker pool shut down");
         } catch (error) {
-            logger.error({ error: error.message }, "Worker pool shutdown error");
+            logger.error(
+                { error: error.message },
+                "Worker pool shutdown error"
+            );
         }
 
         // Stage 4: Close Redis connection
@@ -257,9 +257,7 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 
 // Request ID and logging
 app.use(requestIdMiddleware(logger));
-app.use(
-    requestLoggingMiddleware(activeConnections, () => isShuttingDown)
-);
+app.use(requestLoggingMiddleware(activeConnections, () => isShuttingDown));
 
 // Gzip compression
 app.use(

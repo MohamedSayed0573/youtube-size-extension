@@ -48,21 +48,23 @@ const envSchema = z
             .transform(Number),
 
         // Worker pool
-        MIN_WORKERS: z.string().optional().transform((val) => {
-            if (!val) return undefined;
-            return Number(val);
-        }),
-        MAX_WORKERS: z.string().optional().transform((val) => {
-            if (!val) return undefined;
-            return Number(val);
-        }),
-
-        // yt-dlp configuration
-        YTDLP_TIMEOUT: z
+        MIN_WORKERS: z
             .string()
             .optional()
-            .default("25000")
-            .transform(Number),
+            .transform((val) => {
+                if (!val) return undefined;
+                return Number(val);
+            }),
+        MAX_WORKERS: z
+            .string()
+            .optional()
+            .transform((val) => {
+                if (!val) return undefined;
+                return Number(val);
+            }),
+
+        // yt-dlp configuration
+        YTDLP_TIMEOUT: z.string().optional().default("25000").transform(Number),
         YTDLP_MAX_BUFFER: z
             .string()
             .optional()

@@ -117,8 +117,9 @@ describe("Integration Tests", () => {
         });
 
         test("should report Redis status in health endpoint", async () => {
-            const response = await request(app).get("/health").expect(200);
+            const response = await request(app).get("/health/main").expect(200);
 
+            expect(response.body).toHaveProperty("dependencies");
             expect(response.body.dependencies).toHaveProperty("redis");
             expect(response.body.dependencies.redis).toHaveProperty("enabled");
 
@@ -210,11 +211,11 @@ describe("Integration Tests", () => {
 
             expect(response.status).toBe(200);
             expect(response.body).toHaveProperty("workerPool");
-            expect(response.body.workerPool).toHaveProperty("totalWorkers");
             expect(response.body.workerPool).toHaveProperty("activeWorkers");
             expect(response.body.workerPool).toHaveProperty("queueLength");
-            expect(response.body.workerPool).toHaveProperty("tasksCompleted");
-            expect(response.body.workerPool).toHaveProperty("tasksErrored");
+            expect(response.body.workerPool).toHaveProperty("totalTasks");
+            expect(response.body.workerPool).toHaveProperty("completedTasks");
+            expect(response.body.workerPool).toHaveProperty("failedTasks");
 
             // Verify worker pool is operational
             expect(response.body.workerPool.totalWorkers).toBeGreaterThan(0);
@@ -234,8 +235,8 @@ describe("Integration Tests", () => {
             expect(["CLOSED", "OPEN", "HALF_OPEN"]).toContain(
                 response.body.circuitBreaker.state
             );
-            expect(response.body.circuitBreaker).toHaveProperty("failureCount");
-            expect(response.body.circuitBreaker).toHaveProperty("successCount");
+            expect(response.body.circuitBreaker).toHaveProperty("failures");
+            expect(response.body.circuitBreaker).toHaveProperty("successes");
         });
 
         test("should reset circuit breaker via admin endpoint", async () => {
@@ -387,11 +388,9 @@ describe("Integration Tests", () => {
 
         test("should handle network failures gracefully", async () => {
             // Test with a URL that doesn't exist
-            const response = await request(app)
-                .post("/api/v1/size")
-                .send({
-                    url: "https://www.youtube.com/watch?v=NONEXISTENT123456",
-                });
+            const response = await request(app).post("/api/v1/size").send({
+                url: "https://www.youtube.com/watch?v=NONEXISTENT123456",
+            });
 
             // Should return error, not crash
             expect([400, 500, 502, 503, 504]).toContain(response.status);

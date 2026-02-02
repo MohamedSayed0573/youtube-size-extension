@@ -7,7 +7,14 @@ const express = require("express");
 const os = require("os");
 const { formatUptime } = require("../utils/ytdlp");
 
-function createHealthRoutes(config, workerPool, circuitBreaker, redisState, ytdlpPath, logger) {
+function createHealthRoutes(
+    config,
+    workerPool,
+    circuitBreaker,
+    redisState,
+    ytdlpPath,
+    logger
+) {
     const router = express.Router();
     const { redisClient, redisReady } = redisState;
 
@@ -96,7 +103,8 @@ function createHealthRoutes(config, workerPool, circuitBreaker, redisState, ytdl
             }
             if (
                 !ytdlpAvailable &&
-                (breakerStatus.state === "OPEN" || poolStats.activeWorkers === 0)
+                (breakerStatus.state === "OPEN" ||
+                    poolStats.activeWorkers === 0)
             ) {
                 overallStatus = "unhealthy";
             }

@@ -23,7 +23,8 @@ npm start
 
 ### 1. Docker (Recommended)
 
-**Best for**: Any cloud platform supporting containers (AWS ECS, GCP Cloud Run, Azure Container Instances)
+**Best for**: Any cloud platform supporting containers (AWS ECS, GCP Cloud Run, Azure Container
+Instances)
 
 ```bash
 # Build image
@@ -41,30 +42,31 @@ docker push your-registry/ytdlp-api:latest
 ```
 
 **Docker Compose** (with Redis):
+
 ```yaml
-version: '3.8'
+version: "3.8"
 services:
-  api:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - REDIS_URL=redis://redis:6379
-      - SENTRY_DSN=${SENTRY_DSN}
-    depends_on:
-      - redis
-    restart: unless-stopped
-    
-  redis:
-    image: redis:7-alpine
-    command: redis-server --requirepass ${REDIS_PASSWORD}
-    volumes:
-      - redis-data:/data
-    restart: unless-stopped
+    api:
+        build: .
+        ports:
+            - "3000:3000"
+        environment:
+            - NODE_ENV=production
+            - REDIS_URL=redis://redis:6379
+            - SENTRY_DSN=${SENTRY_DSN}
+        depends_on:
+            - redis
+        restart: unless-stopped
+
+    redis:
+        image: redis:7-alpine
+        command: redis-server --requirepass ${REDIS_PASSWORD}
+        volumes:
+            - redis-data:/data
+        restart: unless-stopped
 
 volumes:
-  redis-data:
+    redis-data:
 ```
 
 Run: `docker-compose up -d`
@@ -76,21 +78,24 @@ Run: `docker-compose up -d`
 **Best for**: Quick deployments with minimal configuration
 
 **Steps:**
+
 1. Fork/clone repo to GitHub
 2. Visit [Railway.app](https://railway.app)
 3. Click "New Project" → "Deploy from GitHub repo"
 4. Select your repository
 5. Add environment variables in Settings:
-   - `SENTRY_DSN`
-   - `NODE_ENV=production`
-   - `REDIS_URL` (optional, add Redis service)
+    - `SENTRY_DSN`
+    - `NODE_ENV=production`
+    - `REDIS_URL` (optional, add Redis service)
 6. Railway auto-detects Node.js and deploys
 
 **Add Redis:**
+
 - Click "New" → "Database" → "Add Redis"
 - Railway automatically sets `REDIS_URL`
 
 **Custom Domain:**
+
 - Settings → Domains → Add custom domain
 - Configure DNS CNAME: `<your-domain>` → `<railway-url>`
 
@@ -101,21 +106,23 @@ Run: `docker-compose up -d`
 **Best for**: Free tier with automatic SSL, simple deployments
 
 **Steps:**
+
 1. Visit [Render.com](https://render.com)
 2. Click "New +" → "Web Service"
 3. Connect your GitHub repository
 4. Configure:
-   - **Name**: ytdlp-api
-   - **Environment**: Node
-   - **Build Command**: `npm install`
-   - **Start Command**: `npm start`
-   - **Instance Type**: Free or Starter ($7/mo)
+    - **Name**: ytdlp-api
+    - **Environment**: Node
+    - **Build Command**: `npm install`
+    - **Start Command**: `npm start`
+    - **Instance Type**: Free or Starter ($7/mo)
 5. Add environment variables:
-   - `SENTRY_DSN`
-   - `NODE_ENV=production`
+    - `SENTRY_DSN`
+    - `NODE_ENV=production`
 6. Click "Create Web Service"
 
 **Add Redis:**
+
 - Click "New +" → "Redis"
 - Copy connection string
 - Add to web service as `REDIS_URL`
@@ -127,6 +134,7 @@ Run: `docker-compose up -d`
 **Best for**: VPS deployments (DigitalOcean, Linode, AWS EC2)
 
 **Installation:**
+
 ```bash
 npm install -g pm2
 
@@ -145,32 +153,36 @@ pm2 startup  # Enable auto-restart on reboot
 ```
 
 **ecosystem.config.js:**
+
 ```javascript
 module.exports = {
-  apps: [{
-    name: 'ytdlp-api',
-    script: './server.js',
-    instances: 'max',  // Use all CPU cores
-    exec_mode: 'cluster',
-    env: {
-      NODE_ENV: 'development',
-      PORT: 3000
-    },
-    env_production: {
-      NODE_ENV: 'production',
-      PORT: 3000,
-      SENTRY_DSN: 'your-dsn',
-      REDIS_URL: 'redis://localhost:6379'
-    },
-    max_memory_restart: '500M',
-    error_file: './logs/error.log',
-    out_file: './logs/out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
-  }]
+    apps: [
+        {
+            name: "ytdlp-api",
+            script: "./server.js",
+            instances: "max", // Use all CPU cores
+            exec_mode: "cluster",
+            env: {
+                NODE_ENV: "development",
+                PORT: 3000,
+            },
+            env_production: {
+                NODE_ENV: "production",
+                PORT: 3000,
+                SENTRY_DSN: "your-dsn",
+                REDIS_URL: "redis://localhost:6379",
+            },
+            max_memory_restart: "500M",
+            error_file: "./logs/error.log",
+            out_file: "./logs/out.log",
+            log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+        },
+    ],
 };
 ```
 
 **Commands:**
+
 ```bash
 pm2 start ecosystem.config.js --env production
 pm2 status
@@ -218,6 +230,7 @@ WantedBy=multi-user.target
 ```
 
 **Setup:**
+
 ```bash
 # Create user
 sudo useradd -r -s /bin/false nodejs
@@ -242,6 +255,7 @@ sudo journalctl -u ytdlp-api -f  # View logs
 ### 6. Vercel (Serverless)
 
 **Note:** Serverless deployment has limitations:
+
 - Cold starts (2-5 second delay on first request)
 - 10 second timeout (yt-dlp may exceed this)
 - No persistent worker pool or circuit breaker state
@@ -249,25 +263,26 @@ sudo journalctl -u ytdlp-api -f  # View logs
 **Only use for low-traffic, non-critical deployments.**
 
 **vercel.json:**
+
 ```json
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "server.js",
-      "use": "@vercel/node"
+    "version": 2,
+    "builds": [
+        {
+            "src": "server.js",
+            "use": "@vercel/node"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/(.*)",
+            "dest": "server.js"
+        }
+    ],
+    "env": {
+        "NODE_ENV": "production",
+        "SENTRY_DSN": "@sentry_dsn"
     }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "server.js"
-    }
-  ],
-  "env": {
-    "NODE_ENV": "production",
-    "SENTRY_DSN": "@sentry_dsn"
-  }
 }
 ```
 
@@ -279,26 +294,26 @@ Deploy: `vercel --prod`
 
 ### Required
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `SENTRY_DSN` | Sentry error tracking DSN | `https://xxx@xxx.sentry.io/xxx` |
-| `NODE_ENV` | Environment (development/staging/production) | `production` |
+| Variable     | Description                                  | Example                         |
+| ------------ | -------------------------------------------- | ------------------------------- |
+| `SENTRY_DSN` | Sentry error tracking DSN                    | `https://xxx@xxx.sentry.io/xxx` |
+| `NODE_ENV`   | Environment (development/staging/production) | `production`                    |
 
 ### Optional
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3000` | Server port |
-| `API_KEY` | `""` | API key for authentication |
-| `REQUIRE_AUTH` | `false` | Enable API key authentication |
-| `ALLOWED_ORIGINS` | `*` | CORS allowed origins (comma-separated) |
-| `REDIS_URL` | - | Redis connection URL for distributed rate limiting |
-| `REDIS_PASSWORD` | - | Redis password |
-| `MIN_WORKERS` | `2` | Minimum worker pool size |
-| `MAX_WORKERS` | `10` | Maximum worker pool size |
-| `RATE_LIMIT_WINDOW_MS` | `600000` | Rate limit window (10 minutes) |
-| `RATE_LIMIT_MAX_REQUESTS` | `60` | Max requests per window |
-| `YTDLP_TIMEOUT` | `25000` | yt-dlp timeout in milliseconds |
+| Variable                  | Default  | Description                                        |
+| ------------------------- | -------- | -------------------------------------------------- |
+| `PORT`                    | `3000`   | Server port                                        |
+| `API_KEY`                 | `""`     | API key for authentication                         |
+| `REQUIRE_AUTH`            | `false`  | Enable API key authentication                      |
+| `ALLOWED_ORIGINS`         | `*`      | CORS allowed origins (comma-separated)             |
+| `REDIS_URL`               | -        | Redis connection URL for distributed rate limiting |
+| `REDIS_PASSWORD`          | -        | Redis password                                     |
+| `MIN_WORKERS`             | `2`      | Minimum worker pool size                           |
+| `MAX_WORKERS`             | `10`     | Maximum worker pool size                           |
+| `RATE_LIMIT_WINDOW_MS`    | `600000` | Rate limit window (10 minutes)                     |
+| `RATE_LIMIT_MAX_REQUESTS` | `60`     | Max requests per window                            |
+| `YTDLP_TIMEOUT`           | `25000`  | yt-dlp timeout in milliseconds                     |
 
 ### Example .env file
 
@@ -341,6 +356,7 @@ For horizontal scaling with multiple instances:
 See [nginx.conf](./nginx.conf) for complete configuration.
 
 **Key features:**
+
 - Least connections load balancing
 - Health checks (`/health`)
 - Request ID injection
@@ -364,6 +380,7 @@ sudo systemctl reload nginx
 See [haproxy.cfg](./haproxy.cfg) for complete configuration.
 
 **Key features:**
+
 - Layer 7 routing
 - Statistics dashboard (`:8404/stats`)
 - Health checks
@@ -391,15 +408,16 @@ All platforms should monitor these endpoints:
 - **`GET /metrics`** - Worker pool and circuit breaker metrics
 
 **Expected response:**
+
 ```json
 {
-  "status": "healthy",
-  "uptime": 3600,
-  "timestamp": "2026-02-02T10:00:00.000Z",
-  "redis": {
-    "enabled": true,
-    "connected": true
-  }
+    "status": "healthy",
+    "uptime": 3600,
+    "timestamp": "2026-02-02T10:00:00.000Z",
+    "redis": {
+        "enabled": true,
+        "connected": true
+    }
 }
 ```
 
@@ -439,12 +457,14 @@ sudo certbot renew --dry-run
 ### Log Aggregation
 
 **Recommended tools:**
+
 - **ELK Stack** (Elasticsearch, Logstash, Kibana)
 - **Grafana Loki** (lightweight alternative)
 - **AWS CloudWatch** (if on AWS)
 - **Datadog** (comprehensive monitoring)
 
 **Configure structured JSON logging:**
+
 ```bash
 # Logs are already in JSON format for production
 NODE_ENV=production npm start | pino-elasticsearch
@@ -457,6 +477,7 @@ NODE_ENV=production npm start | pino-elasticsearch
 ### 1. Enable Redis
 
 Distributed rate limiting across instances:
+
 ```bash
 export REDIS_URL=redis://your-redis-host:6379
 ```
@@ -464,6 +485,7 @@ export REDIS_URL=redis://your-redis-host:6379
 ### 2. Scale Worker Pool
 
 Match CPU cores:
+
 ```bash
 export MIN_WORKERS=4
 export MAX_WORKERS=16
@@ -506,6 +528,7 @@ export MAX_WORKERS=4
 ### Circuit breaker opening
 
 Check yt-dlp health:
+
 ```bash
 yt-dlp --version
 yt-dlp "https://www.youtube.com/watch?v=jNQXAC9IVRw" --dump-json
@@ -526,31 +549,34 @@ redis-cli -h <redis-host> -a <password> ping
 ## Security Best Practices
 
 1. **Enable authentication** in production:
-   ```bash
-   export REQUIRE_AUTH=true
-   export API_KEY=<strong-random-key>
-   ```
+
+    ```bash
+    export REQUIRE_AUTH=true
+    export API_KEY=<strong-random-key>
+    ```
 
 2. **Restrict CORS origins**:
-   ```bash
-   export ALLOWED_ORIGINS=https://yourextension.com
-   ```
+
+    ```bash
+    export ALLOWED_ORIGINS=https://yourextension.com
+    ```
 
 3. **Use secrets manager** (AWS Secrets Manager, Azure Key Vault):
-   - Don't commit `.env` files
-   - Rotate API keys regularly
+    - Don't commit `.env` files
+    - Rotate API keys regularly
 
 4. **Enable firewall**:
-   ```bash
-   sudo ufw allow 3000/tcp
-   sudo ufw enable
-   ```
+
+    ```bash
+    sudo ufw allow 3000/tcp
+    sudo ufw enable
+    ```
 
 5. **Keep dependencies updated**:
-   ```bash
-   npm audit
-   npm update
-   ```
+    ```bash
+    npm audit
+    npm update
+    ```
 
 ---
 
@@ -585,6 +611,7 @@ redis-cli -h <redis-host> -a <password> ping
 5. Scale horizontally if needed (see [SCALING.md](./SCALING.md))
 
 For questions or issues, check the logs:
+
 ```bash
 # PM2
 pm2 logs ytdlp-api

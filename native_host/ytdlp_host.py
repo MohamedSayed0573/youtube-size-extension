@@ -270,7 +270,8 @@ def _get_num(val):    """Safely convert a value to float, returning None on erro
         
     Returns:
         float or None
-    """    try:
+    """
+    try:
         if val is None:
             return None
         v = float(val)

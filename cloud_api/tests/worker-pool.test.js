@@ -211,7 +211,7 @@ describe("Integration Tests", () => {
     });
 
     test("GET /health should include worker pool and circuit breaker status", async () => {
-        const response = await request(app).get("/health");
+        const response = await request(app).get("/health/main");
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty("workerPool");

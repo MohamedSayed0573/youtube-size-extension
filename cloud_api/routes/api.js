@@ -11,7 +11,14 @@ const {
     computeSizes,
 } = require("../utils/ytdlp");
 
-function createApiRoutes(config, workerPool, circuitBreaker, logger, authMiddleware, rateLimiter) {
+function createApiRoutes(
+    config,
+    workerPool,
+    circuitBreaker,
+    logger,
+    authMiddleware,
+    rateLimiter
+) {
     const router = express.Router();
 
     /**
@@ -27,7 +34,8 @@ function createApiRoutes(config, workerPool, circuitBreaker, logger, authMiddlew
                     "GET /": "Root endpoint with basic info",
                     "GET /health": "Health check with system metrics",
                     "GET /health/redis": "Redis connectivity check",
-                    "GET /api/v1/metrics": "Worker pool and circuit breaker metrics",
+                    "GET /api/v1/metrics":
+                        "Worker pool and circuit breaker metrics",
                     "GET /api/v1/openapi": "OpenAPI 3.0 specification",
                 },
                 api: {
@@ -50,7 +58,8 @@ function createApiRoutes(config, workerPool, circuitBreaker, logger, authMiddlew
                     "Automatic retry with exponential backoff (up to 2 retries)",
                 cacheStrategy:
                     "Client-side caching recommended (extension handles TTL)",
-                openapi: "OpenAPI 3.0 specification available at /api/v1/openapi",
+                openapi:
+                    "OpenAPI 3.0 specification available at /api/v1/openapi",
             },
         });
     });
