@@ -28,14 +28,12 @@ require("./instrument");
 const Sentry = require("@sentry/node");
 const express = require("express");
 const cors = require("cors");
-const { execFile } = require("child_process");
-const { promisify } = require("util");
 const rateLimit = require("express-rate-limit");
 const os = require("os");
 const { z } = require("zod");
 const pino = require("pino");
-
-const execFileAsync = promisify(execFile);
+const WorkerPool = require("./worker-pool");
+const { CircuitBreaker } = require("./circuit-breaker");
 
 // Initialize logger
 const logger = pino({
@@ -133,6 +131,99 @@ try {
 const app = express();
 
 // ============================================
+// Worker Pool & Circuit Breaker Setup
+// ============================================
+
+// Initialize worker pool for non-blocking yt-dlp execution
+const workerPool = new WorkerPool({
+    minWorkers: parseInt(process.env.MIN_WORKERS || "2", 10),
+    maxWorkers: parseInt(process.env.MAX_WORKERS || "10", 10),
+    taskTimeout: CONFIG.YTDLP_TIMEOUT + 5000, // +5s buffer
+    maxTasksPerWorker: 100,
+    idleTimeout: 120000, // 2 minutes
+});
+
+// Initialize circuit breaker for fault tolerance
+const circuitBreaker = new CircuitBreaker({
+    failureThreshold: 5,
+    successThreshold: 2,
+    timeout: 60000, // 1 minute cooldown
+    volumeThreshold: 10,
+    name: "yt-dlp",
+});
+
+// Worker pool event handlers
+workerPool.on("workerCreated", ({ workerId, totalWorkers }) => {
+    logger.info({ workerId, totalWorkers }, "Worker created");
+});
+
+workerPool.on("workerDestroyed", ({ workerId, totalWorkers }) => {
+    logger.info({ workerId, totalWorkers }, "Worker destroyed");
+});
+
+workerPool.on("workerError", ({ workerId, error }) => {
+    logger.error({ workerId, error }, "Worker error");
+});
+
+workerPool.on("taskQueued", ({ queueLength }) => {
+    if (queueLength > 5) {
+        logger.warn({ queueLength }, "Task queue building up");
+    }
+});
+
+// Circuit breaker event handlers
+circuitBreaker.on("open", ({ previousState, timestamp }) => {
+    logger.error(
+        { previousState, timestamp },
+        "Circuit breaker opened - yt-dlp calls failing"
+    );
+    Sentry.captureMessage("Circuit breaker opened for yt-dlp", {
+        level: "error",
+        tags: { component: "circuit-breaker" },
+    });
+});
+
+circuitBreaker.on("closed", ({ previousState, timestamp }) => {
+    logger.info(
+        { previousState, timestamp },
+        "Circuit breaker closed - service recovered"
+    );
+});
+
+circuitBreaker.on("half_open", ({ previousState, timestamp }) => {
+    logger.info(
+        { previousState, timestamp },
+        "Circuit breaker half-open - testing recovery"
+    );
+});
+
+// Graceful shutdown handling
+const shutdown = async (signal) => {
+    logger.info({ signal }, "Shutdown signal received");
+
+    // Close HTTP server first (stop accepting new connections)
+    if (server) {
+        await new Promise((resolve) => {
+            server.close(resolve);
+        });
+        logger.info("HTTP server closed");
+    }
+
+    // Shutdown worker pool (wait for active tasks)
+    try {
+        await workerPool.shutdown(10000);
+        logger.info("Worker pool shutdown complete");
+    } catch (error) {
+        logger.error({ error: error.message }, "Worker pool shutdown error");
+    }
+
+    process.exit(0);
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+// ============================================
 // Middleware Configuration
 // ============================================
 
@@ -142,16 +233,17 @@ const app = express();
  */
 app.use((req, res, next) => {
     // Check for existing request ID from proxy/load balancer
-    const requestId = req.headers['x-request-id'] || 
-                     req.headers['x-correlation-id'] || 
-                     `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+    const requestId =
+        req.headers["x-request-id"] ||
+        req.headers["x-correlation-id"] ||
+        `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     req.requestId = requestId;
-    res.setHeader('X-Request-ID', requestId);
-    
+    res.setHeader("X-Request-ID", requestId);
+
     // Add to logger context
     req.log = logger.child({ requestId });
-    
+
     next();
 });
 
@@ -357,63 +449,82 @@ function sizeFromFormat(fmt, durationSec) {
 /**
  * Extracts video metadata from YouTube using yt-dlp with retry logic
  *
- * Runs yt-dlp with -J flag to get complete metadata in JSON format.
- * Uses execFile() instead of exec() to prevent command injection.
- * Includes timeout protection, error handling, and exponential backoff retry.
+ * Now uses worker pool and circuit breaker for non-blocking execution
+ * and fault tolerance. Workers handle yt-dlp subprocess execution in
+ * separate threads to prevent blocking the event loop.
  *
  * @async
  * @param {string} url - The YouTube video URL (must be validated first)
  * @param {number} [maxRetries=2] - Maximum number of retry attempts
  * @returns {Promise<Object>} Parsed JSON metadata from yt-dlp
- * @throws {Error} If yt-dlp fails after all retries or times out
+ * @throws {Error} If yt-dlp fails after all retries or circuit is open
  */
 async function extractInfo(url, maxRetries = 2) {
-    // Use yt-dlp to extract metadata in JSON format
-    // Using execFile instead of exec prevents command injection
-    const args = ["-J", "--skip-download", "--no-playlist", url];
-
     let lastError;
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            const { stdout, stderr } = await execFileAsync("yt-dlp", args, {
-                timeout: CONFIG.YTDLP_TIMEOUT,
-                maxBuffer: CONFIG.YTDLP_MAX_BUFFER,
-                windowsHide: true, // Hide console window on Windows
+            // Execute through circuit breaker with worker pool
+            const data = await circuitBreaker.execute(async () => {
+                return await workerPool.execute({
+                    url,
+                    timeout: CONFIG.YTDLP_TIMEOUT,
+                    maxBuffer: CONFIG.YTDLP_MAX_BUFFER,
+                    retryAttempt: attempt,
+                });
             });
 
-            if (stderr) {
-                logger.warn({ stderr, attempt }, "yt-dlp warnings");
-            }
-
-            return JSON.parse(stdout);
+            return data;
         } catch (error) {
             lastError = error;
-            
-            // Don't retry on timeout or client errors
-            if (error.killed || error.code === 'ENOENT') {
+
+            // Don't retry if circuit is open
+            if (error.code === "CIRCUIT_OPEN") {
+                throw error;
+            }
+
+            // Don't retry on timeout or critical errors
+            const noRetryErrors = [
+                "TIMEOUT",
+                "NOT_FOUND",
+                "VIDEO_UNAVAILABLE",
+            ];
+            if (noRetryErrors.includes(error.code)) {
                 break;
             }
-            
+
             // Don't retry on final attempt
             if (attempt < maxRetries) {
                 const backoffMs = Math.min(1000 * Math.pow(2, attempt), 5000);
                 logger.warn(
-                    { attempt, backoffMs, error: error.message },
+                    {
+                        attempt,
+                        backoffMs,
+                        error: error.message,
+                        code: error.code,
+                    },
                     "Retrying yt-dlp after failure"
                 );
-                await new Promise(resolve => setTimeout(resolve, backoffMs));
+                await new Promise((resolve) => setTimeout(resolve, backoffMs));
             }
         }
     }
 
-    // All retries exhausted
-    if (lastError.killed) {
+    // All retries exhausted - format error message
+    if (lastError.code === "TIMEOUT") {
         throw new Error("yt-dlp timed out while fetching metadata");
     }
-    if (lastError.code === 'ENOENT') {
+    if (lastError.code === "NOT_FOUND") {
         throw new Error("yt-dlp executable not found. Please install yt-dlp.");
     }
-    throw new Error(`Failed to fetch metadata after ${maxRetries + 1} attempts: ${lastError.message}`);
+    if (lastError.code === "CIRCUIT_OPEN") {
+        throw new Error(
+            "Service temporarily unavailable. yt-dlp is experiencing issues."
+        );
+    }
+    throw new Error(
+        `Failed to fetch metadata after ${maxRetries + 1} attempts: ${lastError.message}`
+    );
 }
 
 /**
@@ -562,21 +673,41 @@ app.get("/", (req, res) => {
 
 /**
  * Health check endpoint
- * Returns comprehensive system metrics, yt-dlp status, and service info
+ * Returns comprehensive system metrics, yt-dlp status, worker pool, and circuit breaker info
  */
 app.get("/health", apiLimiter, async (req, res) => {
     try {
+        // Get worker pool and circuit breaker status
+        const poolStats = workerPool.getStats();
+        const breakerStatus = circuitBreaker.getStatus();
+
         // Check yt-dlp availability and version
         let ytdlpVersion = "unknown";
         let ytdlpAvailable = false;
         try {
-            const { stdout } = await execFileAsync("yt-dlp", ["--version"], {
+            // Use worker pool for health check too
+            const result = await workerPool.execute({
+                url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", // Test video
                 timeout: 5000,
+                maxBuffer: 1024 * 1024,
+                retryAttempt: 0,
             });
-            ytdlpVersion = stdout.trim();
             ytdlpAvailable = true;
+            ytdlpVersion = "working";
         } catch (error) {
             logger.warn({ error: error.message }, "yt-dlp not available");
+        }
+
+        // Determine overall health status
+        let overallStatus = "healthy";
+        if (!ytdlpAvailable || breakerStatus.state === "OPEN") {
+            overallStatus = "degraded";
+        }
+        if (
+            !ytdlpAvailable &&
+            (breakerStatus.state === "OPEN" || poolStats.activeWorkers === 0)
+        ) {
+            overallStatus = "unhealthy";
         }
 
         // System metrics
@@ -585,7 +716,7 @@ app.get("/health", apiLimiter, async (req, res) => {
 
         res.json({
             ok: true,
-            status: ytdlpAvailable ? "healthy" : "degraded",
+            status: overallStatus,
             timestamp: new Date().toISOString(),
             version: CONFIG.API_VERSION,
             uptime: {
@@ -624,6 +755,8 @@ app.get("/health", apiLimiter, async (req, res) => {
                     version: ytdlpVersion,
                 },
             },
+            workerPool: poolStats,
+            circuitBreaker: breakerStatus,
             config: {
                 environment: CONFIG.NODE_ENV,
                 authEnabled: CONFIG.REQUIRE_AUTH,
@@ -658,9 +791,14 @@ app.get("/api/v1/docs", (req, res) => {
             health: {
                 "GET /": "Root endpoint with basic info",
                 "GET /health": "Health check with system metrics",
+                "GET /api/v1/metrics": "Worker pool and circuit breaker metrics",
             },
             api: {
                 "POST /api/v1/size": "Extract video size information",
+            },
+            admin: {
+                "POST /api/v1/admin/circuit-breaker/reset":
+                    "Reset circuit breaker (requires auth)",
             },
         },
         authentication: CONFIG.REQUIRE_AUTH
@@ -668,12 +806,64 @@ app.get("/api/v1/docs", (req, res) => {
             : "Optional",
         rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS} requests per ${CONFIG.RATE_LIMIT_WINDOW_MS / 1000} seconds`,
         features: {
+            workerPool: "Non-blocking yt-dlp execution with worker threads",
+            circuitBreaker: "Automatic failure detection and recovery",
             requestTracing: "X-Request-ID header for distributed tracing",
-            retryLogic: "Automatic retry with exponential backoff (up to 2 retries)",
-            cacheStrategy: "Client-side caching recommended (extension handles TTL)",
+            retryLogic:
+                "Automatic retry with exponential backoff (up to 2 retries)",
+            cacheStrategy:
+                "Client-side caching recommended (extension handles TTL)",
         },
     });
 });
+
+/**
+ * Metrics endpoint for monitoring
+ * Returns detailed worker pool and circuit breaker metrics
+ */
+app.get("/api/v1/metrics", (req, res) => {
+    const poolStats = workerPool.getStats();
+    const breakerStatus = circuitBreaker.getStatus();
+
+    res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        workerPool: poolStats,
+        circuitBreaker: breakerStatus,
+    });
+});
+
+/**
+ * Admin endpoint to reset circuit breaker
+ * Requires authentication if enabled
+ */
+app.post(
+    "/api/v1/admin/circuit-breaker/reset",
+    authenticateApiKey,
+    (req, res) => {
+        try {
+            const oldStatus = circuitBreaker.getStatus();
+            circuitBreaker.reset();
+
+            logger.info(
+                { oldState: oldStatus.state },
+                "Circuit breaker manually reset"
+            );
+
+            res.json({
+                ok: true,
+                message: "Circuit breaker reset successfully",
+                previousState: oldStatus.state,
+                currentState: circuitBreaker.getStatus().state,
+            });
+        } catch (error) {
+            res.status(500).json({
+                ok: false,
+                error: error.message,
+            });
+        }
+    }
+);
 
 // ============================================
 // API v1 Endpoints
@@ -700,7 +890,11 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
             req.log.warn("Request missing URL parameter");
             return res
                 .status(400)
-                .json({ ok: false, error: "URL is required", requestId: req.requestId });
+                .json({
+                    ok: false,
+                    error: "URL is required",
+                    requestId: req.requestId,
+                });
         }
 
         // Validate URL is safe and is a YouTube URL
@@ -736,7 +930,10 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
         const result = computeSizes(meta, duration_hint);
 
         const duration = Date.now() - startTime;
-        req.log.info({ duration, videoId: meta.id }, "Request completed successfully");
+        req.log.info(
+            { duration, videoId: meta.id },
+            "Request completed successfully"
+        );
 
         res.json(result);
     } catch (error) {
@@ -754,7 +951,7 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
             { error: error.message, url: req.body.url, duration },
             "Error processing request"
         );
-        
+
         // Determine appropriate status code
         let statusCode = 502;
         if (error.message.includes("timed out")) {
@@ -762,7 +959,7 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
         } else if (error.message.includes("not found")) {
             statusCode = 503;
         }
-        
+
         res.status(statusCode).json({
             ok: false,
             error: error.message,
@@ -804,7 +1001,14 @@ app.use((req, res) => {
     res.status(404).json({
         ok: false,
         error: "Endpoint not found",
-        availableEndpoints: ["/", "/health", "/api/v1/size", "/api/v1/docs"],
+        availableEndpoints: [
+            "/",
+            "/health",
+            "/api/v1/size",
+            "/api/v1/docs",
+            "/api/v1/metrics",
+            "/api/v1/admin/circuit-breaker/reset",
+        ],
     });
 });
 
@@ -829,6 +1033,9 @@ app.use((err, req, res, next) => {
 // Server Startup
 // ============================================
 
+// Store server reference for graceful shutdown
+let server;
+
 // Export app for testing
 if (typeof module !== "undefined" && module.exports) {
     module.exports = app;
@@ -836,7 +1043,7 @@ if (typeof module !== "undefined" && module.exports) {
 
 // Only start server if not in test mode
 if (CONFIG.NODE_ENV !== "test") {
-    app.listen(CONFIG.PORT, "0.0.0.0", () => {
+    server = app.listen(CONFIG.PORT, "0.0.0.0", () => {
         logger.info(
             {
                 service: "ytdlp-sizer-api",
@@ -845,9 +1052,23 @@ if (CONFIG.NODE_ENV !== "test") {
                 environment: CONFIG.NODE_ENV,
                 authRequired: CONFIG.REQUIRE_AUTH,
                 rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min`,
-                endpoints: ["/", "/health", "/api/v1/size", "/api/v1/docs"],
+                workerPool: {
+                    min: workerPool.minWorkers,
+                    max: workerPool.maxWorkers,
+                },
+                circuitBreaker: {
+                    enabled: true,
+                    threshold: circuitBreaker.failureThreshold,
+                },
+                endpoints: [
+                    "/",
+                    "/health",
+                    "/api/v1/size",
+                    "/api/v1/docs",
+                    "/api/v1/metrics",
+                ],
             },
-            "Server started successfully"
+            "Server started successfully with worker pool and circuit breaker"
         );
     });
 }

@@ -41,7 +41,9 @@ describe("Cloud API Server", () => {
             expect(response.body).toHaveProperty("system");
             expect(response.body).toHaveProperty("dependencies");
             expect(response.body.dependencies).toHaveProperty("ytdlp");
-            expect(response.body.dependencies.ytdlp).toHaveProperty("available");
+            expect(response.body.dependencies.ytdlp).toHaveProperty(
+                "available"
+            );
             expect(response.body.dependencies.ytdlp).toHaveProperty("version");
         });
 
@@ -82,7 +84,9 @@ describe("Cloud API Server", () => {
 
             expect(response.body).toHaveProperty("requestId");
             expect(response.headers).toHaveProperty("x-request-id");
-            expect(response.body.requestId).toBe(response.headers["x-request-id"]);
+            expect(response.body.requestId).toBe(
+                response.headers["x-request-id"]
+            );
         });
     });
 

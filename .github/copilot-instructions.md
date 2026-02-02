@@ -6,12 +6,34 @@
 
 1. **Browser Extension** (MV3): popup.js, background.js (service worker), content.js
 2. **Native Host** (Python): `native_host/ytdlp_host.py` - native messaging protocol
-3. **Cloud API** (Node.js): `cloud_api/server.js` - alternative HTTP endpoint
+3. **Cloud API** (Node.js): `cloud_api/server.js` - alternative HTTP endpoint with worker pool
 
 **Data flow**: content.js → background.js → (native host OR cloud API) → yt-dlp → response →
 popup.js
 
 **Fallback strategy**: Native host preferred, cloud API as fallback (configurable in options)
+
+### Cloud API Architecture (Non-Blocking)
+
+**Worker Pool Pattern**: yt-dlp executes in separate worker threads to prevent blocking Node.js event loop
+
+- **Main Thread**: Express HTTP server, handles requests, manages queue
+- **Worker Threads** (2-10): Execute yt-dlp subprocess, return JSON metadata
+- **Task Queue**: Queues requests when all workers busy
+- **Auto-scaling**: Creates workers dynamically based on load (min: 2, max: 10)
+
+**Circuit Breaker Pattern**: Protects against cascading failures from yt-dlp issues
+
+- **States**: CLOSED (normal), OPEN (failing fast), HALF_OPEN (testing recovery)
+- **Thresholds**: Opens after 5 failures, closes after 2 successes
+- **Cooldown**: 60s before attempting recovery
+- **Fail-fast**: Rejects requests immediately when OPEN (no blocking)
+
+**Files**:
+- `server.js`: Main HTTP server, integrates worker pool + circuit breaker
+- `worker-pool.js`: Manages worker threads, queue, auto-scaling
+- `ytdlp-worker.js`: Worker thread code, executes yt-dlp subprocess
+- `circuit-breaker.js`: Fault tolerance, state management, metrics
 
 ## Critical Patterns
 
@@ -209,7 +231,7 @@ fetch(cloudApiUrl, {
 
 ## Cloud API Testing
 
-**Jest test suite** (21 tests, 84% coverage):
+**Jest test suite** (40+ tests, 80%+ coverage):
 
 ```bash
 cd cloud_api
@@ -232,6 +254,9 @@ npm run test:ci      # CI mode (force exit)
 - Security features (5 tests)
 - Error handling (3 tests)
 - CORS configuration (2 tests)
+- Worker pool tests (10 tests)
+- Circuit breaker tests (10 tests)
+- Integration tests (4 tests)
 
 ## Sentry Monitoring
 
@@ -276,16 +301,20 @@ Required secrets for deployment: `DOCKER_USERNAME`, `DOCKER_PASSWORD`, `RAILWAY_
 
 1. **Never create .md files** unless explicitly requested
 2. **Keep format ID mappings synchronized** across all 3 tiers
-3. **Use execFile (not exec)** to prevent command injection
-4. **Decimal units (1000-based)** for humanizeBytes: KB, MB, GB (not KiB, MiB)
-5. **Cache TTL default: 2 hours** (7200 seconds)
-6. **Rate limit: 1 request per 10 seconds** per video ID
-7. **Service worker imports**: Use `importScripts()` not ES6 imports
-8. **Native host logs**: stderr only (stdout reserved for protocol)
-9. **Logging**: Use `logger.info()`, `logger.error()`, NOT `console.log()`
-10. **Error context**: Always include relevant data in log objects:
+3. **Worker pool execution**: All yt-dlp calls MUST go through worker pool, never direct execFile
+4. **Circuit breaker**: All worker pool calls MUST be wrapped with circuit breaker
+5. **Decimal units (1000-based)** for humanizeBytes: KB, MB, GB (not KiB, MiB)
+6. **Cache TTL default: 2 hours** (7200 seconds)
+7. **Rate limit: 1 request per 10 seconds** per video ID
+8. **Service worker imports**: Use `importScripts()` not ES6 imports
+9. **Native host logs**: stderr only (stdout reserved for protocol)
+10. **Logging**: Use `logger.info()`, `logger.error()`, NOT `console.log()`
+11. **Error context**: Always include relevant data in log objects:
     `logger.error({ url, error }, "msg")`
-11. **Sentry breadcrumbs**: Add for important API calls: `Sentry.addBreadcrumb({ message, data })`
-12. **Test mode**: Set `NODE_ENV=test` to silence logs in test suite
-13. **instrument.js**: MUST be first require in server.js (before other imports)
-14. **Error handler order**: Sentry handler must come AFTER all routes, BEFORE custom error handler
+12. **Sentry breadcrumbs**: Add for important API calls: `Sentry.addBreadcrumb({ message, data })`
+13. **Test mode**: Set `NODE_ENV=test` to silence logs in test suite
+14. **instrument.js**: MUST be first require in server.js (before other imports)
+15. **Error handler order**: Sentry handler must come AFTER all routes, BEFORE custom error handler
+16. **Graceful shutdown**: Always await worker pool shutdown in SIGTERM/SIGINT handlers
+17. **Worker lifecycle**: Workers auto-recycle after 100 tasks to prevent memory leaks
+18. **Circuit breaker events**: Monitor open/closed/half_open events for alerting

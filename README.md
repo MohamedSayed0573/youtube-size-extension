@@ -1,6 +1,7 @@
 # YouTube Size Extension
 
-A browser extension that displays YouTube video download sizes for different quality levels before downloading. Works with Chrome, Firefox, Edge, and other Chromium-based browsers.
+A browser extension that displays YouTube video download sizes for different quality levels before
+downloading. Works with Chrome, Firefox, Edge, and other Chromium-based browsers.
 
 ## 📋 Features
 
@@ -53,12 +54,14 @@ winget install yt-dlp
 #### 2. Load Extension
 
 **Chrome/Edge:**
+
 1. Navigate to `chrome://extensions`
 2. Enable "Developer mode"
 3. Click "Load unpacked"
 4. Select the extension root directory
 
 **Firefox:**
+
 1. Navigate to `about:debugging`
 2. Click "Load Temporary Add-on"
 3. Select `manifest.json`
@@ -66,12 +69,14 @@ winget install yt-dlp
 #### 3. Install Native Host (Recommended)
 
 **Linux/Mac:**
+
 ```bash
 cd native_host
 ./install_host.sh YOUR_CHROME_EXTENSION_ID
 ```
 
 **Windows:**
+
 ```powershell
 cd native_host
 .\install_win.ps1
@@ -98,20 +103,21 @@ npm start
 
 ### Environment Variables (Cloud API)
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `3000` |
-| `NODE_ENV` | Environment (development/production/test) | `development` |
-| `SENTRY_DSN` | Sentry error tracking DSN (required for monitoring) | `` |
-| `API_KEY` | API authentication key (generate with `openssl rand -hex 32`) | `` |
-| `REQUIRE_AUTH` | Enable API key authentication | `false` |
-| `ALLOWED_ORIGINS` | CORS allowed origins (comma-separated or `*`) | `*` |
-| `RATE_LIMIT_WINDOW_MS` | Rate limit window | `60000` |
-| `RATE_LIMIT_MAX_REQUESTS` | Max requests per window | `20` |
-| `YTDLP_TIMEOUT` | yt-dlp execution timeout (ms) | `25000` |
-| `YTDLP_MAX_BUFFER` | Maximum buffer for yt-dlp output | `10485760` |
+| Variable                  | Description                                                   | Default       |
+| ------------------------- | ------------------------------------------------------------- | ------------- |
+| `PORT`                    | Server port                                                   | `3000`        |
+| `NODE_ENV`                | Environment (development/production/test)                     | `development` |
+| `SENTRY_DSN`              | Sentry error tracking DSN (required for monitoring)           | ``            |
+| `API_KEY`                 | API authentication key (generate with `openssl rand -hex 32`) | ``            |
+| `REQUIRE_AUTH`            | Enable API key authentication                                 | `false`       |
+| `ALLOWED_ORIGINS`         | CORS allowed origins (comma-separated or `*`)                 | `*`           |
+| `RATE_LIMIT_WINDOW_MS`    | Rate limit window                                             | `60000`       |
+| `RATE_LIMIT_MAX_REQUESTS` | Max requests per window                                       | `20`          |
+| `YTDLP_TIMEOUT`           | yt-dlp execution timeout (ms)                                 | `25000`       |
+| `YTDLP_MAX_BUFFER`        | Maximum buffer for yt-dlp output                              | `10485760`    |
 
 **Configuration Validation:**
+
 - All environment variables are validated using Zod schemas at startup
 - Invalid configuration causes server to exit with detailed error messages
 - See [cloud_api/.env.example](cloud_api/.env.example) for complete examples
@@ -132,36 +138,39 @@ Access via extension options page:
 Extract video size information for multiple resolutions.
 
 **Request:**
+
 ```json
 {
-  "url": "https://youtube.com/watch?v=VIDEO_ID",
-  "duration_hint": 180
+    "url": "https://youtube.com/watch?v=VIDEO_ID",
+    "duration_hint": 180
 }
 ```
 
 **Response:**
+
 ```json
 {
-  "ok": true,
-  "bytes": {
-    "s720p": 45234567,
-    "s1080p": 89123456,
-    "s1440p": 134567890
-  },
-  "human": {
-    "s720p": "45.23 MB",
-    "s1080p": "89.12 MB",
-    "s1440p": "134.57 MB"
-  },
-  "duration": 180
+    "ok": true,
+    "bytes": {
+        "s720p": 45234567,
+        "s1080p": 89123456,
+        "s1440p": 134567890
+    },
+    "human": {
+        "s720p": "45.23 MB",
+        "s1080p": "89.12 MB",
+        "s1440p": "134.57 MB"
+    },
+    "duration": 180
 }
 ```
 
 **Error Response:**
+
 ```json
 {
-  "ok": false,
-  "error": "Invalid or unsafe YouTube URL"
+    "ok": false,
+    "error": "Invalid or unsafe YouTube URL"
 }
 ```
 
@@ -169,11 +178,11 @@ Extract video size information for multiple resolutions.
 
 - `GET /` - Service information
 - `GET /health` - Comprehensive health check with:
-  - System metrics (CPU, memory, load)
-  - Process information
-  - **Dependency validation** (yt-dlp availability check)
-  - Configuration status
-  - Returns `healthy` or `degraded` status
+    - System metrics (CPU, memory, load)
+    - Process information
+    - **Dependency validation** (yt-dlp availability check)
+    - Configuration status
+    - Returns `healthy` or `degraded` status
 
 ## 🧪 Testing
 
@@ -235,13 +244,15 @@ docker run -p 3000:3000 \
 ### Request Flow & Error Recovery
 
 1. **Request Tracing**: Each request gets a unique ID (X-Request-ID) for distributed tracing
-2. **Retry Logic**: Failed yt-dlp calls automatically retry with exponential backoff (up to 2 retries)
+2. **Retry Logic**: Failed yt-dlp calls automatically retry with exponential backoff (up to 2
+   retries)
 3. **Circuit Breaking**: Timeouts and fatal errors fail fast without retries
 4. **Graceful Degradation**: Health endpoint reports "degraded" status if yt-dlp unavailable
 
 ### Cache Strategy
 
 **Extension (Client-Side):**
+
 - In-memory cache in background worker
 - Configurable TTL (default: 2 hours)
 - Cache key: `cache-{videoId}`
@@ -249,11 +260,13 @@ docker run -p 3000:3000 \
 - Invalidation: Manual via options page or TTL expiry
 
 **Duration Hints:**
+
 - Collected from content script on page load
 - Cached for 1 hour to optimize yt-dlp calls
 - Reduces redundant `--get-duration` executions
 
 **Cloud API (Stateless):**
+
 - No server-side caching (stateless design)
 - Clients responsible for caching responses
 - Idempotent: Same request always returns same result (until video changes)
@@ -286,6 +299,7 @@ All API requests include correlation IDs for distributed tracing:
 - **Usage**: Track requests across load balancers, proxies, and services
 
 Example:
+
 ```bash
 curl -X POST http://localhost:3000/api/v1/size \
   -H "Content-Type: application/json" \
