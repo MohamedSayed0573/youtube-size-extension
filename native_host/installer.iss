@@ -8,8 +8,9 @@
 #define MyAppVersion "1.0.0"
 #define InstallDirName "YouTubeSizeNative"
 
-; TODO: Set your published Chrome Web Store extension ID here
-#define StoreID "YOUR_STORE_ID"
+; Extension ID from Chrome Web Store (Update this before packaging)
+; Get this from: chrome://extensions/ after publishing to Chrome Web Store
+#define StoreID "YOUR_CHROME_EXTENSION_ID_HERE"
 ; Optional: comma-separated dev IDs for unpacked/testing builds
 #define DevIDs ""
 
