@@ -361,7 +361,7 @@ if (CONFIG.NODE_ENV !== "test") {
                 rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min`,
                 redis: {
                     enabled: CONFIG.REDIS_ENABLED,
-                    connected: redisReady(),
+                    connected: redisReady,
                 },
                 workerPool: {
                     min: workerPool.minWorkers,
@@ -378,7 +378,7 @@ if (CONFIG.NODE_ENV !== "test") {
 
         // Redis status
         if (CONFIG.REDIS_ENABLED) {
-            if (redisReady()) {
+            if (redisReady) {
                 logger.info("✓ Redis distributed rate limiting active");
             } else {
                 logger.warn(
