@@ -24,6 +24,8 @@
  * @version 2.0.0
  */
 
+require("./instrument");
+const Sentry = require("@sentry/node");
 const express = require("express");
 const cors = require("cors");
 const { execFile } = require("child_process");
@@ -616,6 +618,14 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
     try {
         const { url, duration_hint } = req.body;
 
+        // Add Sentry breadcrumb for tracking
+        Sentry.addBreadcrumb({
+            category: "api",
+            message: "Video size request received",
+            data: { url, duration_hint },
+            level: "info",
+        });
+
         // Validate URL is provided
         if (!url) {
             return res
@@ -653,6 +663,7 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
 
         res.json(result);
     } catch (error) {
+        Sentry.captureException(error);
         logger.error({ error: error.message, url: req.body.url }, "Error processing request");
         res.status(error.message.includes("timed out") ? 504 : 502).json({
             ok: false,
@@ -698,8 +709,13 @@ app.use((req, res) => {
     });
 });
 
+// Sentry error handler - must be after all routes but before custom error handlers
+// This automatically captures all errors and sends them to Sentry
+Sentry.setupExpressErrorHandler(app);
+
 // Global error handler
 app.use((err, req, res, next) => {
+    // Error already captured by Sentry middleware above
     logger.error({ err, path: req.path, method: req.method }, "Unhandled error");
     res.status(500).json({
         ok: false,
