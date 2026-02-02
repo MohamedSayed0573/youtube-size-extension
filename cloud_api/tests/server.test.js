@@ -93,12 +93,10 @@ describe("Cloud API Server", () => {
             });
 
             test("should reject invalid duration_hint", async () => {
-                const response = await request(app)
-                    .post("/api/v1/size")
-                    .send({
-                        url: "https://youtube.com/watch?v=dQw4w9WgXcQ",
-                        duration_hint: "invalid",
-                    });
+                const response = await request(app).post("/api/v1/size").send({
+                    url: "https://youtube.com/watch?v=dQw4w9WgXcQ",
+                    duration_hint: "invalid",
+                });
 
                 expect(response.status).toBe(400);
                 expect(response.body).toHaveProperty("ok", false);
@@ -106,12 +104,10 @@ describe("Cloud API Server", () => {
             });
 
             test("should reject duration_hint outside valid range", async () => {
-                const response = await request(app)
-                    .post("/api/v1/size")
-                    .send({
-                        url: "https://youtube.com/watch?v=dQw4w9WgXcQ",
-                        duration_hint: 99999,
-                    });
+                const response = await request(app).post("/api/v1/size").send({
+                    url: "https://youtube.com/watch?v=dQw4w9WgXcQ",
+                    duration_hint: 99999,
+                });
 
                 expect(response.status).toBe(400);
                 expect(response.body).toHaveProperty("ok", false);
@@ -147,7 +143,17 @@ describe("Cloud API Server", () => {
 
     describe("Security Features", () => {
         test("should block URLs with shell metacharacters", async () => {
-            const dangerousChars = [";", "|", "&", "`", "$", "(", ")", "<", ">"];
+            const dangerousChars = [
+                ";",
+                "|",
+                "&",
+                "`",
+                "$",
+                "(",
+                ")",
+                "<",
+                ">",
+            ];
 
             for (const char of dangerousChars) {
                 const response = await request(app)
@@ -238,7 +244,9 @@ describe("Cloud API Server", () => {
                 .get("/")
                 .set("Origin", "https://example.com");
 
-            expect(response.headers).toHaveProperty("access-control-allow-origin");
+            expect(response.headers).toHaveProperty(
+                "access-control-allow-origin"
+            );
         });
 
         test("should handle OPTIONS preflight", async () => {

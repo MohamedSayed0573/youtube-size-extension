@@ -31,8 +31,22 @@ const { promisify } = require("util");
 const rateLimit = require("express-rate-limit");
 const os = require("os");
 const { z } = require("zod");
+const pino = require("pino");
 
 const execFileAsync = promisify(execFile);
+
+// Initialize logger
+const logger = pino({
+    level: process.env.LOG_LEVEL || (process.env.NODE_ENV === "test" ? "silent" : "info"),
+    transport: process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test" ? {
+        target: "pino-pretty",
+        options: {
+            colorize: true,
+            translateTime: "SYS:standard",
+            ignore: "pid,hostname"
+        }
+    } : undefined
+});
 
 // ============================================
 // Environment Configuration with Zod Validation
@@ -75,9 +89,9 @@ try {
     const parsed = envSchema.safeParse(process.env);
 
     if (!parsed.success) {
-        console.error("❌ Environment configuration validation failed:");
+        logger.error({ errors: parsed.error.issues }, "Environment configuration validation failed");
         parsed.error.issues.forEach((issue) => {
-            console.error(`  - ${issue.path.join(".")}: ${issue.message}`);
+            logger.error({ path: issue.path.join("."), message: issue.message }, "Validation error");
         });
         process.exit(1);
     }
@@ -91,12 +105,9 @@ try {
                 : parsed.data.ALLOWED_ORIGINS.split(",").map((s) => s.trim()),
     };
 
-    console.log("✅ Environment configuration validated successfully");
+    logger.info({ config: CONFIG }, "Environment configuration validated successfully");
 } catch (error) {
-    console.error(
-        "❌ Failed to parse environment configuration:",
-        error.message
-    );
+    logger.error({ error: error.message }, "Failed to parse environment configuration");
     process.exit(1);
 }
 
@@ -330,7 +341,7 @@ async function extractInfo(url) {
         });
 
         if (stderr) {
-            console.error("yt-dlp stderr:", stderr);
+            logger.warn({ stderr }, "yt-dlp warnings");
         }
 
         return JSON.parse(stdout);
@@ -502,7 +513,7 @@ app.get("/health", apiLimiter, async (req, res) => {
             ytdlpVersion = stdout.trim();
             ytdlpAvailable = true;
         } catch (error) {
-            console.error("yt-dlp not available:", error.message);
+            logger.warn({ error: error.message }, "yt-dlp not available");
         }
 
         // System metrics
@@ -642,7 +653,7 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
 
         res.json(result);
     } catch (error) {
-        console.error("Error processing request:", error);
+        logger.error({ error: error.message, url: req.body.url }, "Error processing request");
         res.status(error.message.includes("timed out") ? 504 : 502).json({
             ok: false,
             error: error.message,
@@ -689,7 +700,7 @@ app.use((req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-    console.error("Unhandled error:", err);
+    logger.error({ err, path: req.path, method: req.method }, "Unhandled error");
     res.status(500).json({
         ok: false,
         error: "Internal server error",
@@ -708,28 +719,14 @@ if (typeof module !== "undefined" && module.exports) {
 // Only start server if not in test mode
 if (CONFIG.NODE_ENV !== "test") {
     app.listen(CONFIG.PORT, "0.0.0.0", () => {
-        console.log(`┌${"─".repeat(50)}┐`);
-        console.log(`│ ytdlp-sizer-api v${CONFIG.API_VERSION}${" ".repeat(31)}│`);
-        console.log(`├${"─".repeat(50)}┤`);
-        console.log(`│ Status: Running${" ".repeat(33)}│`);
-        console.log(
-            `│ Port: ${CONFIG.PORT}${" ".repeat(43 - CONFIG.PORT.toString().length)}│`
-        );
-        console.log(
-            `│ Environment: ${CONFIG.NODE_ENV}${" ".repeat(36 - CONFIG.NODE_ENV.length)}│`
-        );
-        console.log(
-            `│ Auth Required: ${CONFIG.REQUIRE_AUTH}${" ".repeat(32 - CONFIG.REQUIRE_AUTH.toString().length)}│`
-        );
-        console.log(
-            `│ Rate Limit: ${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min${" ".repeat(33 - CONFIG.RATE_LIMIT_MAX_REQUESTS.toString().length)}│`
-        );
-        console.log(`├${"─".repeat(50)}┤`);
-        console.log(`│ Endpoints:${" ".repeat(39)}│`);
-        console.log(`│   GET  /${" ".repeat(43)}│`);
-        console.log(`│   GET  /health${" ".repeat(35)}│`);
-        console.log(`│   POST /api/v1/size${" ".repeat(30)}│`);
-        console.log(`│   GET  /api/v1/docs${" ".repeat(30)}│`);
-        console.log(`└${"─".repeat(50)}┘`);
+        logger.info({
+            service: "ytdlp-sizer-api",
+            version: CONFIG.API_VERSION,
+            port: CONFIG.PORT,
+            environment: CONFIG.NODE_ENV,
+            authRequired: CONFIG.REQUIRE_AUTH,
+            rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min`,
+            endpoints: ["/", "/health", "/api/v1/size", "/api/v1/docs"]
+        }, "Server started successfully");
     });
 }
