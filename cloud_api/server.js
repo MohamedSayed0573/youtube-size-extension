@@ -43,7 +43,7 @@ const envSchema = z
         // Server configuration
         PORT: z.string().default("3000").transform(Number),
         NODE_ENV: z
-            .enum(["development", "staging", "production"])
+            .enum(["development", "staging", "production", "test"])
             .default("development"),
 
         // Authentication
@@ -700,28 +700,36 @@ app.use((err, req, res, next) => {
 // Server Startup
 // ============================================
 
-app.listen(CONFIG.PORT, "0.0.0.0", () => {
-    console.log(`┌${"─".repeat(50)}┐`);
-    console.log(`│ ytdlp-sizer-api v${CONFIG.API_VERSION}${" ".repeat(31)}│`);
-    console.log(`├${"─".repeat(50)}┤`);
-    console.log(`│ Status: Running${" ".repeat(33)}│`);
-    console.log(
-        `│ Port: ${CONFIG.PORT}${" ".repeat(43 - CONFIG.PORT.toString().length)}│`
-    );
-    console.log(
-        `│ Environment: ${CONFIG.NODE_ENV}${" ".repeat(36 - CONFIG.NODE_ENV.length)}│`
-    );
-    console.log(
-        `│ Auth Required: ${CONFIG.REQUIRE_AUTH}${" ".repeat(32 - CONFIG.REQUIRE_AUTH.toString().length)}│`
-    );
-    console.log(
-        `│ Rate Limit: ${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min${" ".repeat(33 - CONFIG.RATE_LIMIT_MAX_REQUESTS.toString().length)}│`
-    );
-    console.log(`├${"─".repeat(50)}┤`);
-    console.log(`│ Endpoints:${" ".repeat(39)}│`);
-    console.log(`│   GET  /${" ".repeat(43)}│`);
-    console.log(`│   GET  /health${" ".repeat(35)}│`);
-    console.log(`│   POST /api/v1/size${" ".repeat(30)}│`);
-    console.log(`│   GET  /api/v1/docs${" ".repeat(30)}│`);
-    console.log(`└${"─".repeat(50)}┘`);
-});
+// Export app for testing
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = app;
+}
+
+// Only start server if not in test mode
+if (CONFIG.NODE_ENV !== "test") {
+    app.listen(CONFIG.PORT, "0.0.0.0", () => {
+        console.log(`┌${"─".repeat(50)}┐`);
+        console.log(`│ ytdlp-sizer-api v${CONFIG.API_VERSION}${" ".repeat(31)}│`);
+        console.log(`├${"─".repeat(50)}┤`);
+        console.log(`│ Status: Running${" ".repeat(33)}│`);
+        console.log(
+            `│ Port: ${CONFIG.PORT}${" ".repeat(43 - CONFIG.PORT.toString().length)}│`
+        );
+        console.log(
+            `│ Environment: ${CONFIG.NODE_ENV}${" ".repeat(36 - CONFIG.NODE_ENV.length)}│`
+        );
+        console.log(
+            `│ Auth Required: ${CONFIG.REQUIRE_AUTH}${" ".repeat(32 - CONFIG.REQUIRE_AUTH.toString().length)}│`
+        );
+        console.log(
+            `│ Rate Limit: ${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min${" ".repeat(33 - CONFIG.RATE_LIMIT_MAX_REQUESTS.toString().length)}│`
+        );
+        console.log(`├${"─".repeat(50)}┤`);
+        console.log(`│ Endpoints:${" ".repeat(39)}│`);
+        console.log(`│   GET  /${" ".repeat(43)}│`);
+        console.log(`│   GET  /health${" ".repeat(35)}│`);
+        console.log(`│   POST /api/v1/size${" ".repeat(30)}│`);
+        console.log(`│   GET  /api/v1/docs${" ".repeat(30)}│`);
+        console.log(`└${"─".repeat(50)}┘`);
+    });
+}
