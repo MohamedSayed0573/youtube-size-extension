@@ -3,7 +3,5 @@
   "description": "Native host to run yt-dlp -F and return 480p/720p sizes.",
   "path": "D:\\extention\\native_host\\ytdlp_host.cmd",
   "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://cnmffocbajjncfkggoedbdoaaffcjlhj/"
-  ]
+  "allowed_origins": ["chrome-extension://cnmffocbajjncfkggoedbdoaaffcjlhj/"]
 }

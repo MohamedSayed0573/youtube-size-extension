@@ -40,23 +40,23 @@ const { CircuitBreaker } = require("./circuit-breaker");
 // ============================================
 
 const TIMEOUTS = {
-    YTDLP_DEFAULT: 25000,        // 25 seconds for yt-dlp execution
-    TASK_BUFFER: 5000,           // 5 second buffer for worker tasks
-    HEALTH_CHECK: 5000,          // 5 seconds for health check
-    WORKER_IDLE: 120000,         // 2 minutes worker idle timeout
-    CIRCUIT_COOLDOWN: 60000,     // 1 minute circuit breaker cooldown
-    SHUTDOWN_GRACE: 10000,       // 10 seconds graceful shutdown
+    YTDLP_DEFAULT: 25000, // 25 seconds for yt-dlp execution
+    TASK_BUFFER: 5000, // 5 second buffer for worker tasks
+    HEALTH_CHECK: 5000, // 5 seconds for health check
+    WORKER_IDLE: 120000, // 2 minutes worker idle timeout
+    CIRCUIT_COOLDOWN: 60000, // 1 minute circuit breaker cooldown
+    SHUTDOWN_GRACE: 10000, // 10 seconds graceful shutdown
 };
 
 const LIMITS = {
-    MAX_BUFFER: 10 * 1024 * 1024,  // 10 MB max buffer for yt-dlp output
-    REQUEST_BODY: "10kb",           // 10 KB max request body
-    MIN_WORKERS: 2,                 // Minimum worker pool size
-    MAX_WORKERS: 10,                // Maximum worker pool size
-    MAX_TASKS_PER_WORKER: 100,     // Tasks before worker recycle
-    CIRCUIT_FAILURE_THRESHOLD: 5,  // Failures before circuit opens
-    CIRCUIT_SUCCESS_THRESHOLD: 2,  // Successes to close circuit
-    CIRCUIT_VOLUME_THRESHOLD: 10,  // Min requests before evaluation
+    MAX_BUFFER: 10 * 1024 * 1024, // 10 MB max buffer for yt-dlp output
+    REQUEST_BODY: "10kb", // 10 KB max request body
+    MIN_WORKERS: 2, // Minimum worker pool size
+    MAX_WORKERS: 10, // Maximum worker pool size
+    MAX_TASKS_PER_WORKER: 100, // Tasks before worker recycle
+    CIRCUIT_FAILURE_THRESHOLD: 5, // Failures before circuit opens
+    CIRCUIT_SUCCESS_THRESHOLD: 2, // Successes to close circuit
+    CIRCUIT_VOLUME_THRESHOLD: 10, // Min requests before evaluation
 };
 
 // Initialize logger
@@ -104,8 +104,14 @@ const envSchema = z
         RATE_LIMIT_MAX_REQUESTS: z.string().default("20").transform(Number),
 
         // yt-dlp configuration
-        YTDLP_TIMEOUT: z.string().default(String(TIMEOUTS.YTDLP_DEFAULT)).transform(Number),
-        YTDLP_MAX_BUFFER: z.string().default(String(LIMITS.MAX_BUFFER)).transform(Number),
+        YTDLP_TIMEOUT: z
+            .string()
+            .default(String(TIMEOUTS.YTDLP_DEFAULT))
+            .transform(Number),
+        YTDLP_MAX_BUFFER: z
+            .string()
+            .default(String(LIMITS.MAX_BUFFER))
+            .transform(Number),
     })
     .refine((data) => !data.REQUIRE_AUTH || data.API_KEY !== "", {
         message: "API_KEY must be set when REQUIRE_AUTH is true",
@@ -160,8 +166,14 @@ const app = express();
 
 // Initialize worker pool for non-blocking yt-dlp execution
 const workerPool = new WorkerPool({
-    minWorkers: parseInt(process.env.MIN_WORKERS || String(LIMITS.MIN_WORKERS), 10),
-    maxWorkers: parseInt(process.env.MAX_WORKERS || String(LIMITS.MAX_WORKERS), 10),
+    minWorkers: parseInt(
+        process.env.MIN_WORKERS || String(LIMITS.MIN_WORKERS),
+        10
+    ),
+    maxWorkers: parseInt(
+        process.env.MAX_WORKERS || String(LIMITS.MAX_WORKERS),
+        10
+    ),
     taskTimeout: CONFIG.YTDLP_TIMEOUT + TIMEOUTS.TASK_BUFFER,
     maxTasksPerWorker: LIMITS.MAX_TASKS_PER_WORKER,
     idleTimeout: TIMEOUTS.WORKER_IDLE,
@@ -246,7 +258,10 @@ const shutdown = async (signal) => {
 
 // Handle uncaught exceptions gracefully
 process.on("uncaughtException", (error) => {
-    logger.fatal({ error: error.message, stack: error.stack }, "Uncaught exception");
+    logger.fatal(
+        { error: error.message, stack: error.stack },
+        "Uncaught exception"
+    );
     Sentry.captureException(error);
     shutdown("uncaughtException");
 });

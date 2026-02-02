@@ -41,12 +41,12 @@
 
     async function storageGet(keys) {
         return new Promise((resolve) =>
-            chrome.storage.local.get(keys, resolve),
+            chrome.storage.local.get(keys, resolve)
         );
     }
     async function storageSet(items) {
         return new Promise((resolve) =>
-            chrome.storage.local.set(items, resolve),
+            chrome.storage.local.set(items, resolve)
         );
     }
 
@@ -124,7 +124,7 @@
         const ttl = clamp(
             parseInt($("ttlHours").value, 10) || defaultSettings.ttlHours,
             1,
-            48,
+            48
         );
         let selected = getSelectedRes();
         const obj = {

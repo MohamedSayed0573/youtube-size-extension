@@ -1,4 +1,5 @@
 DO NOT CREATE ANY SUMMARY DOCUMENT UNLESS YOU WERE ASKED TO
+
 # YouTube Size Extension - AI Agent Instructions
 
 ## Architecture Overview
