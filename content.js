@@ -126,8 +126,9 @@
             lastHeight === vh &&
             lastVideoId === videoId &&
             lastItag === itag
-        )
-            {return;}
+        ) {
+            return;
+        }
         lastLabel = label;
         lastHeight = vh;
         lastVideoId = videoId;

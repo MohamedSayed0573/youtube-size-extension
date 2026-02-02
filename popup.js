@@ -71,8 +71,9 @@
      * @returns {number|null} Estimated size in bytes, or null if duration invalid
      */
     function estimateSizeBytesByHeight(height, durationSec) {
-        if (!durationSec || !isFinite(durationSec) || durationSec <= 0)
-            {return null;}
+        if (!durationSec || !isFinite(durationSec) || durationSec <= 0) {
+            return null;
+        }
         const avgMbps = {
             144: 0.1,
             240: 0.3,
@@ -178,8 +179,9 @@
             const h = Math.floor(s / 3600);
             const m = Math.floor((s % 3600) / 60);
             const sec = s % 60;
-            if (h > 0)
-                {return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;}
+            if (h > 0) {
+                return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+            }
             return `${m}:${String(sec).padStart(2, "0")}`;
         } catch (_) {
             return null;
@@ -215,8 +217,9 @@
                 selectedResolutions = defaultSettings.resolutions;
             }
             showLength = cfg.showLength !== false; // default to true if absent
-            if (durationRowEl)
-                {durationRowEl.style.display = showLength ? "" : "none";}
+            if (durationRowEl) {
+                durationRowEl.style.display = showLength ? "" : "none";
+            }
         } catch (_) {
             /* ignore */
         }
@@ -538,10 +541,12 @@
             if (
                 b &&
                 keys.some((k) => typeof b[k] === "number" && isFinite(b[k]))
-            )
-                {return true;}
-            if (h && keys.some((k) => typeof h[k] === "string" && h[k]))
-                {return true;}
+            ) {
+                return true;
+            }
+            if (h && keys.some((k) => typeof h[k] === "string" && h[k])) {
+                return true;
+            }
             return false;
         } catch (_) {
             return false;
@@ -658,15 +663,17 @@
     ) {
         return new Promise((resolve, reject) => {
             try {
-                if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage)
-                    {return resolve({ ok: false });}
+                if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+                    return resolve({ ok: false });
+                }
                 const msg = { type: "prefetch", url, forced, tabId };
                 if (
                     typeof durationSec === "number" &&
                     isFinite(durationSec) &&
                     durationSec > 0
-                )
-                    {msg.durationSec = Math.round(durationSec);}
+                ) {
+                    msg.durationSec = Math.round(durationSec);
+                }
                 chrome.runtime.sendMessage(msg, (resp) => {
                     const err =
                         chrome && chrome.runtime && chrome.runtime.lastError

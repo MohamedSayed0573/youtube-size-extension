@@ -1,22 +1,29 @@
 # Dependencies
+
 node_modules/
 cloud_api/node_modules/
 
 # Build outputs
+
 dist/
 build/
 
 # Native host
+
 native_host/
 
 # Documentation
-*.md
+
+\*.md
 
 # Config files
-*.json
+
+\*.json
 
 # Old backup files
+
 cloud_api/server-old.js
 
 # Test files (use Jest environment)
-cloud_api/tests/*.test.js
+
+cloud_api/tests/\*.test.js

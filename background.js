@@ -81,10 +81,11 @@ async function callCloudApi(url, durationHint) {
         try {
             json = JSON.parse(text);
         } catch (_) {}
-        if (!res.ok || !json)
-            {throw new Error(
+        if (!res.ok || !json) {
+            throw new Error(
                 (json && json.error) || `Cloud API HTTP ${res.status}`
-            );}
+            );
+        }
         if (!json.ok) throw new Error(json.error || "Cloud API returned error");
         return json; // { ok, human, bytes, duration? }
     } finally {
@@ -196,8 +197,9 @@ function startBadgeSpinner(tabId) {
         !settings.showBadge ||
         typeof chrome.action === "undefined" ||
         typeof tabId !== "number"
-    )
-        {return;}
+    ) {
+        return;
+    }
     stopBadgeSpinner(tabId);
     try {
         chrome.action.setBadgeBackgroundColor({ tabId, color: "#4a90e2" });
@@ -239,8 +241,9 @@ function setBadgeCheck(tabId) {
         !settings.showBadge ||
         typeof chrome.action === "undefined" ||
         typeof tabId !== "number"
-    )
-        {return;}
+    ) {
+        return;
+    }
     try {
         chrome.action.setBadgeText({ tabId, text: "✓" });
         chrome.action.setBadgeBackgroundColor({ tabId, color: "#27ae60" });
@@ -253,8 +256,9 @@ function setBadgeCheck(tabId) {
  * @param tabId
  */
 function clearBadge(tabId) {
-    if (typeof chrome.action === "undefined" || typeof tabId !== "number")
-        {return;}
+    if (typeof chrome.action === "undefined" || typeof tabId !== "number") {
+        return;
+    }
     try {
         chrome.action.setBadgeText({ tabId, text: "" });
     } catch (_) {}
@@ -455,10 +459,12 @@ function cacheHasAnySize(cached) {
         ];
         const b = cached.bytes;
         const h = cached.human;
-        if (b && keys.some((k) => typeof b[k] === "number" && isFinite(b[k])))
-            {return true;}
-        if (h && keys.some((k) => typeof h[k] === "string" && h[k]))
-            {return true;}
+        if (b && keys.some((k) => typeof b[k] === "number" && isFinite(b[k]))) {
+            return true;
+        }
+        if (h && keys.some((k) => typeof h[k] === "string" && h[k])) {
+            return true;
+        }
         return false;
     } catch (_) {
         return false;
@@ -806,8 +812,9 @@ try {
                             : null;
                     const vid =
                         msg.videoId || (url ? extractVideoId(url) : null);
-                    if (dur && vid)
-                        {durationHints.set(vid, { d: dur, ts: Date.now() });}
+                    if (dur && vid) {
+                        durationHints.set(vid, { d: dur, ts: Date.now() });
+                    }
                 } catch (_) {}
                 if (url && typeof tabId === "number") {
                     prefetchForUrl(url, tabId);
@@ -828,8 +835,9 @@ try {
                         ? msg.tabId
                         : tabIdFromSender;
                 const url = msg.url;
-                if (url && typeof tabId === "number")
-                    {ensureBadgeForTab(url, tabId);}
+                if (url && typeof tabId === "number") {
+                    ensureBadgeForTab(url, tabId);
+                }
                 try {
                     sendResponse({ ok: true });
                 } catch (_) {}
