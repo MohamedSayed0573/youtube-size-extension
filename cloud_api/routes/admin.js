@@ -5,6 +5,12 @@
 
 const express = require("express");
 
+/**
+ *
+ * @param circuitBreaker
+ * @param logger
+ * @param authMiddleware
+ */
 function createAdminRoutes(circuitBreaker, logger, authMiddleware) {
     const router = express.Router();
 

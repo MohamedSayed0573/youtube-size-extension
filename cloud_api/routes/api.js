@@ -11,6 +11,15 @@ const {
     computeSizes,
 } = require("../utils/ytdlp");
 
+/**
+ *
+ * @param config
+ * @param workerPool
+ * @param circuitBreaker
+ * @param logger
+ * @param authMiddleware
+ * @param rateLimiter
+ */
 function createApiRoutes(
     config,
     workerPool,

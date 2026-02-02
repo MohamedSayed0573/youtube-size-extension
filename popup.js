@@ -66,14 +66,13 @@
      * - 720p: 2.5 Mbps
      * - 1080p: 5.5 Mbps
      * - 1440p: 9.0 Mbps
-     *
      * @param {number} height - The video height (144, 240, 360, etc.)
      * @param {number} durationSec - Video duration in seconds
      * @returns {number|null} Estimated size in bytes, or null if duration invalid
      */
     function estimateSizeBytesByHeight(height, durationSec) {
         if (!durationSec || !isFinite(durationSec) || durationSec <= 0)
-            return null;
+            {return null;}
         const avgMbps = {
             144: 0.1,
             240: 0.3,
@@ -92,7 +91,6 @@
      *
      * Creates both human-readable and byte-value maps based on duration.
      * Used to show quick estimates while exact data is being fetched.
-     *
      * @param {number} durationSec - Video duration in seconds
      * @returns {Object} Object containing:
      *   - {Object} humanMap - Human-readable sizes (e.g., "45.32 MB")
@@ -136,8 +134,7 @@
      * Starts an animated text spinner in the status element
      *
      * Displays a cycling animation to indicate background processing.
-     *
-     * @param {string} [base='Refreshing'] - The base status message
+     * @param {string} [base] - The base status message
      * @returns {void}
      */
     function startStatusSpinner(base = "Refreshing") {
@@ -153,6 +150,9 @@
         }, 350);
     }
 
+    /**
+     *
+     */
     function stopStatusSpinner() {
         if (statusSpinTimer) {
             try {
@@ -168,7 +168,6 @@
      * Formats as:
      * - H:MM:SS for videos over 1 hour
      * - M:SS for videos under 1 hour
-     *
      * @param {number} seconds - Duration in seconds
      * @returns {string|null} Formatted duration (e.g., "5:32", "1:23:45") or null if invalid
      */
@@ -180,7 +179,7 @@
             const m = Math.floor((s % 3600) / 60);
             const sec = s % 60;
             if (h > 0)
-                return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+                {return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;}
             return `${m}:${String(sec).padStart(2, "0")}`;
         } catch (_) {
             return null;
@@ -196,6 +195,9 @@
         showLength: true,
         resolutions: ["480p", "720p", "1080p", "1440p"],
     };
+    /**
+     *
+     */
     async function loadSettings() {
         try {
             const obj = await settingsGet(["ytSize_settings"]);
@@ -214,7 +216,7 @@
             }
             showLength = cfg.showLength !== false; // default to true if absent
             if (durationRowEl)
-                durationRowEl.style.display = showLength ? "" : "none";
+                {durationRowEl.style.display = showLength ? "" : "none";}
         } catch (_) {
             /* ignore */
         }
@@ -236,6 +238,10 @@
             ? chrome.storage.session
             : settingsArea;
 
+    /**
+     *
+     * @param area
+     */
     function makeGet(area) {
         return (keys) =>
             new Promise((resolve) => {
@@ -262,6 +268,10 @@
                 }
             });
     }
+    /**
+     *
+     * @param area
+     */
     function makeSet(area) {
         return (items) =>
             new Promise((resolve) => {
@@ -286,6 +296,10 @@
     const cacheSet = makeSet(cacheArea);
 
     // Cross-browser Promise wrapper for tabs.query
+    /**
+     *
+     * @param queryInfo
+     */
     function tabsQuery(queryInfo) {
         return new Promise((resolve) => {
             try {
@@ -301,6 +315,10 @@
         });
     }
 
+    /**
+     *
+     * @param msg
+     */
     function showError(msg) {
         statusEl.style.display = "none";
         resultEl.style.display = "none";
@@ -323,7 +341,6 @@
      * - 1080p shows H.264/VP9/AV1 variants if available
      * - 1440p shows VP9/AV1 variants if available
      * - If current resolution matches and we know the itag, shows only that codec
-     *
      * @param {Object} humanMap - Human-readable size strings
      * @param {Object} bytesMap - Raw byte values
      * @returns {void}
@@ -452,7 +469,6 @@
      *
      * Updates all UI elements with size data, duration, and status notes.
      * Shows the result container and hides status/error messages.
-     *
      * @param {Object} humanMap - Human-readable size strings
      * @param {Object} bytesMap - Raw byte values
      * @param {string} note - Status note to display (e.g., "Cached • 5 min ago")
@@ -479,6 +495,10 @@
 
     // Shared utility functions (isYouTubeUrl, extractVideoId, humanizeBytes) are available from utils.js
 
+    /**
+     *
+     * @param ts
+     */
     function formatAge(ts) {
         const ageMs = Date.now() - ts;
         const mins = Math.floor(ageMs / 60000);
@@ -493,7 +513,6 @@
      *
      * Checks both human-readable and byte maps for any non-null values.
      * Prevents showing empty cache entries as valid data.
-     *
      * @param {Object} cached - The cached data object to validate
      * @returns {boolean} True if cache contains at least one valid size
      */
@@ -520,9 +539,9 @@
                 b &&
                 keys.some((k) => typeof b[k] === "number" && isFinite(b[k]))
             )
-                return true;
+                {return true;}
             if (h && keys.some((k) => typeof h[k] === "string" && h[k]))
-                return true;
+                {return true;}
             return false;
         } catch (_) {
             return false;
@@ -531,7 +550,6 @@
 
     /**
      * Reads cached size data for a video from storage
-     *
      * @async
      * @param {string} videoId - The YouTube video ID
      * @returns {Promise<Object|null>} Cached data object or null if not found
@@ -542,6 +560,11 @@
         return obj[key] || null;
     }
 
+    /**
+     *
+     * @param videoId
+     * @param data
+     */
     async function writeCache(videoId, data) {
         const key = `sizeCache_${videoId}`;
         await cacheSet({ [key]: data });
@@ -552,7 +575,6 @@
      *
      * Establishes a native connection to ytdlp_host.py and requests size information.
      * Used as a fallback when background prefetch fails or for forced refreshes.
-     *
      * @param {string} url - The YouTube video URL
      * @param {number} [durationHint] - Optional duration hint in seconds
      * @returns {Promise<Object>} Promise resolving to size data or rejecting with error
@@ -621,6 +643,13 @@
         });
     }
 
+    /**
+     *
+     * @param url
+     * @param forced
+     * @param tabId
+     * @param durationSec
+     */
     function requestBackgroundPrefetch(
         url,
         forced = false,
@@ -630,14 +659,14 @@
         return new Promise((resolve, reject) => {
             try {
                 if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage)
-                    return resolve({ ok: false });
+                    {return resolve({ ok: false });}
                 const msg = { type: "prefetch", url, forced, tabId };
                 if (
                     typeof durationSec === "number" &&
                     isFinite(durationSec) &&
                     durationSec > 0
                 )
-                    msg.durationSec = Math.round(durationSec);
+                    {msg.durationSec = Math.round(durationSec);}
                 chrome.runtime.sendMessage(msg, (resp) => {
                     const err =
                         chrome && chrome.runtime && chrome.runtime.lastError
@@ -780,6 +809,9 @@
             startStatusSpinner("Refreshing");
         }
 
+        /**
+         *
+         */
         async function doFetch() {
             try {
                 startStatusSpinner("Refreshing");

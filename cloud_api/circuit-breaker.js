@@ -15,8 +15,7 @@
  * - successThreshold: Successes in HALF_OPEN before closing (default: 2)
  * - timeout: Time in ms before attempting recovery (default: 60000)
  * - volumeThreshold: Minimum requests before evaluating failures (default: 10)
- *
- * @fileoverview Circuit breaker for yt-dlp resilience
+ * @file Circuit breaker for yt-dlp resilience
  * @author YouTube Size Extension Team
  * @version 2.0.0
  */
@@ -38,8 +37,7 @@ const STATE = {
  *
  * Monitors operation success/failure and manages circuit state transitions.
  * Emits events for state changes and metrics collection.
- *
- * @extends EventEmitter
+ * @augments EventEmitter
  * @example
  *   const breaker = new CircuitBreaker({
  *     failureThreshold: 5,
@@ -57,13 +55,12 @@ const STATE = {
 class CircuitBreaker extends EventEmitter {
     /**
      * Create a circuit breaker
-     *
      * @param {Object} options - Configuration options
-     * @param {number} [options.failureThreshold=5] - Failures before opening
-     * @param {number} [options.successThreshold=2] - Successes before closing from half-open
-     * @param {number} [options.timeout=60000] - Cooldown period in ms
-     * @param {number} [options.volumeThreshold=10] - Min requests before evaluating
-     * @param {string} [options.name='yt-dlp'] - Circuit name for logging
+     * @param {number} [options.failureThreshold] - Failures before opening
+     * @param {number} [options.successThreshold] - Successes before closing from half-open
+     * @param {number} [options.timeout] - Cooldown period in ms
+     * @param {number} [options.volumeThreshold] - Min requests before evaluating
+     * @param {string} [options.name] - Circuit name for logging
      */
     constructor(options = {}) {
         super();
@@ -93,7 +90,6 @@ class CircuitBreaker extends EventEmitter {
 
     /**
      * Execute a function with circuit breaker protection
-     *
      * @async
      * @param {Function} fn - Async function to execute
      * @returns {Promise<any>} Result from the function
@@ -125,7 +121,6 @@ class CircuitBreaker extends EventEmitter {
 
     /**
      * Check if request can be executed based on circuit state
-     *
      * @private
      * @returns {boolean} True if request can proceed
      */
@@ -149,7 +144,6 @@ class CircuitBreaker extends EventEmitter {
 
     /**
      * Handle successful execution
-     *
      * @private
      */
     _onSuccess() {
@@ -166,7 +160,6 @@ class CircuitBreaker extends EventEmitter {
 
     /**
      * Handle failed execution
-     *
      * @private
      * @param {Error} error - The error that occurred
      */
@@ -203,7 +196,6 @@ class CircuitBreaker extends EventEmitter {
 
     /**
      * Change circuit state and emit event
-     *
      * @private
      * @param {string} newState - The new state
      */
@@ -244,7 +236,6 @@ class CircuitBreaker extends EventEmitter {
 
     /**
      * Get current circuit breaker status
-     *
      * @returns {Object} Status object with state and metrics
      */
     getStatus() {
@@ -285,7 +276,6 @@ class CircuitBreaker extends EventEmitter {
 
     /**
      * Force circuit to specific state (for testing/admin)
-     *
      * @param {string} newState - State to force
      */
     forceState(newState) {

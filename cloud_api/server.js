@@ -1,8 +1,7 @@
 /**
  * Cloud API Server for YouTube Size Extension
  * Refactored modular version
- *
- * @fileoverview Cloud API server for yt-dlp size extraction
+ * @file Cloud API server for yt-dlp size extraction
  * @author YouTube Size Extension Team
  * @version 2.0.0
  */

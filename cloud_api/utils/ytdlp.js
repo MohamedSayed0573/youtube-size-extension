@@ -11,7 +11,6 @@ const { VIDEO_FORMAT_IDS, AUDIO_FALLBACK_ID } = require("../config/constants");
  *
  * Prevents command injection by ensuring only valid YouTube URLs are processed.
  * Blocks any URL with shell metacharacters or suspicious patterns.
- *
  * @param {string} url - The URL to validate
  * @returns {boolean} True if URL is valid and safe
  */
@@ -27,7 +26,7 @@ function isValidYouTubeUrl(url) {
 
     // Block shell metacharacters and command injection patterns
     const dangerousPatterns = [
-        /[;&|`$(){}\[\]<>\\]/, // Shell metacharacters
+        /[;&|`$(){}[\]<>\\]/, // Shell metacharacters (no need to escape [ ] inside character class)
         /\$\(/, // Command substitution
         /`/, // Backtick execution
         /\.\.\//, // Path traversal
@@ -74,7 +73,6 @@ function isValidYouTubeUrl(url) {
 
 /**
  * Converts bytes to human-readable format using decimal (SI) units
- *
  * @param {number} n - Number of bytes
  * @returns {string|null} Formatted string (e.g., "45.32 MB") or null if invalid
  */
@@ -94,7 +92,6 @@ function humanizeBytes(n) {
 
 /**
  * Converts seconds to H:MM:SS or M:SS format
- *
  * @param {number} seconds - Duration in seconds
  * @returns {string|null} Formatted duration string or null if invalid
  */
@@ -104,7 +101,7 @@ function humanizeDuration(seconds) {
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
     if (h > 0)
-        return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+        {return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;}
     return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
@@ -133,7 +130,6 @@ function formatUptime(seconds) {
  *
  * Prefers exact filesize, falls back to filesize_approx, then estimates
  * from bitrate (tbr) and duration.
- *
  * @param {Object} fmt - The format object from yt-dlp JSON output
  * @param {number} durationSec - Video duration in seconds
  * @returns {number|null} Estimated size in bytes or null
@@ -166,14 +162,13 @@ function sizeFromFormat(fmt, durationSec) {
  *
  * Uses worker pool and circuit breaker for non-blocking execution
  * and fault tolerance.
- *
  * @async
  * @param {string} url - The YouTube video URL (must be validated first)
  * @param {Object} workerPool - Worker pool instance
  * @param {Object} circuitBreaker - Circuit breaker instance
  * @param {Object} config - Configuration object
  * @param {Object} logger - Logger instance
- * @param {number} [maxRetries=2] - Maximum number of retry attempts
+ * @param {number} [maxRetries] - Maximum number of retry attempts
  * @returns {Promise<Object>} Parsed JSON metadata from yt-dlp
  * @throws {Error} If yt-dlp fails after all retries or circuit is open
  */
@@ -273,7 +268,6 @@ async function extractInfo(
 
 /**
  * Computes video sizes for all resolutions from yt-dlp metadata
- *
  * @param {Object} meta - The complete metadata object from yt-dlp
  * @param {number} [durationHint] - Optional duration hint in seconds
  * @returns {Object} Result object with ok, bytes, human, and duration fields

@@ -8,7 +8,6 @@
  *
  * Checks X-API-Key header against configured API_KEY environment variable.
  * Skips authentication if REQUIRE_AUTH is false (development mode).
- *
  * @param {Object} config - Configuration object
  * @returns {Function} Express middleware function
  */

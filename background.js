@@ -8,19 +8,19 @@
  * - Cloud API fallback support
  * - Badge indicators and status updates
  * - Duration hints collection from content script
- *
- * @fileoverview Background service worker for video size management
+ * @file Background service worker for video size management
  * @requires utils.js - Shared utility functions
  * @author YouTube Size Extension Team
  * @version 0.2.0
  */
 
 /* global isYouTubeUrl, extractVideoId, humanizeBytes, humanizeDuration */
+/* eslint-disable no-inner-declarations */
 
 // Import shared utilities
 importScripts("utils.js");
 
-/** @const {string} The native messaging host identifier */
+/** @constant {string} The native messaging host identifier */
 const HOST_NAME = "com.ytdlp.sizer";
 
 // In-flight requests to avoid duplicate native host calls per video
@@ -35,7 +35,6 @@ const durationHints = new Map(); // videoId -> { d: seconds, ts: epoch_ms }
  *
  * This is an alternative to the native messaging host, allowing users to deploy
  * their own Node.js server for processing yt-dlp requests.
- *
  * @async
  * @param {string} url - The YouTube video URL to analyze
  * @param {number} [durationHint] - Optional video duration in seconds to improve accuracy
@@ -83,9 +82,9 @@ async function callCloudApi(url, durationHint) {
             json = JSON.parse(text);
         } catch (_) {}
         if (!res.ok || !json)
-            throw new Error(
+            {throw new Error(
                 (json && json.error) || `Cloud API HTTP ${res.status}`
-            );
+            );}
         if (!json.ok) throw new Error(json.error || "Cloud API returned error");
         return json; // { ok, human, bytes, duration? }
     } finally {
@@ -94,7 +93,7 @@ async function callCloudApi(url, durationHint) {
         } catch (_) {}
     }
 }
-/** @const {number} Time-to-live for duration hints in milliseconds (1 hour) */
+/** @constant {number} Time-to-live for duration hints in milliseconds (1 hour) */
 const HINT_TTL_MS = 60 * 60 * 1000;
 
 /**
@@ -102,7 +101,6 @@ const HINT_TTL_MS = 60 * 60 * 1000;
  *
  * Duration hints are collected from the content script when videos play,
  * allowing us to avoid redundant duration fetches from yt-dlp.
- *
  * @param {string} videoId - The YouTube video ID
  * @returns {number|null} Duration in seconds if found and fresh, null otherwise
  */
@@ -127,6 +125,9 @@ function getDurationHint(videoId) {
     }
 }
 
+/**
+ *
+ */
 function pruneDurationHints() {
     try {
         const now = Date.now();
@@ -145,6 +146,10 @@ function pruneDurationHints() {
 const tabBadgeTimers = new Map(); // tabId -> intervalId
 
 // Cross-browser Promise wrappers for tabs API (Firefox expects callbacks on chrome.*)
+/**
+ *
+ * @param queryInfo
+ */
 function tabsQuery(queryInfo) {
     return new Promise((resolve) => {
         try {
@@ -160,6 +165,10 @@ function tabsQuery(queryInfo) {
     });
 }
 
+/**
+ *
+ * @param tabId
+ */
 function tabsGet(tabId) {
     return new Promise((resolve) => {
         try {
@@ -179,7 +188,6 @@ function tabsGet(tabId) {
  *
  * Displays a cycling animation ('.', '..', '...') to indicate that
  * video size data is being fetched in the background.
- *
  * @param {number} tabId - The Chrome tab ID to show the spinner on
  * @returns {void}
  */
@@ -189,7 +197,7 @@ function startBadgeSpinner(tabId) {
         typeof chrome.action === "undefined" ||
         typeof tabId !== "number"
     )
-        return;
+        {return;}
     stopBadgeSpinner(tabId);
     try {
         chrome.action.setBadgeBackgroundColor({ tabId, color: "#4a90e2" });
@@ -210,7 +218,6 @@ function startBadgeSpinner(tabId) {
 
 /**
  * Stops the animated spinner badge on the specified tab
- *
  * @param {number} tabId - The Chrome tab ID to stop the spinner on
  * @returns {void}
  */
@@ -224,7 +231,6 @@ function stopBadgeSpinner(tabId) {
 
 /**
  * Sets a green checkmark badge to indicate successful cache
- *
  * @param {number} tabId - The Chrome tab ID to show the checkmark on
  * @returns {void}
  */
@@ -234,7 +240,7 @@ function setBadgeCheck(tabId) {
         typeof chrome.action === "undefined" ||
         typeof tabId !== "number"
     )
-        return;
+        {return;}
     try {
         chrome.action.setBadgeText({ tabId, text: "✓" });
         chrome.action.setBadgeBackgroundColor({ tabId, color: "#27ae60" });
@@ -242,14 +248,23 @@ function setBadgeCheck(tabId) {
     } catch (_) {}
 }
 
+/**
+ *
+ * @param tabId
+ */
 function clearBadge(tabId) {
     if (typeof chrome.action === "undefined" || typeof tabId !== "number")
-        return;
+        {return;}
     try {
         chrome.action.setBadgeText({ tabId, text: "" });
     } catch (_) {}
 }
 
+/**
+ *
+ * @param url
+ * @param tabId
+ */
 async function ensureBadgeForTab(url, tabId) {
     if (typeof tabId !== "number") return;
     if (!isYouTubeUrl(url)) {
@@ -282,6 +297,9 @@ const defaultSettings = {
 };
 let settings = { ...defaultSettings };
 
+/**
+ *
+ */
 function getTTLms() {
     const ttl = parseInt(settings.ttlHours, 10);
     const hours =
@@ -289,6 +307,9 @@ function getTTLms() {
     return hours * 60 * 60 * 1000;
 }
 
+/**
+ *
+ */
 async function loadSettings() {
     try {
         const obj = await storageGet(["ytSize_settings"]);
@@ -326,14 +347,26 @@ try {
 
 // Shared utility functions (isYouTubeUrl, extractVideoId) are imported from utils.js
 
+/**
+ *
+ * @param keys
+ */
 function storageGet(keys) {
     return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 }
 
+/**
+ *
+ * @param items
+ */
 function storageSet(items) {
     return new Promise((resolve) => chrome.storage.local.set(items, resolve));
 }
 
+/**
+ *
+ * @param keys
+ */
 function storageRemove(keys) {
     return new Promise((resolve) => chrome.storage.local.remove(keys, resolve));
 }
@@ -344,20 +377,39 @@ const cacheArea =
     chrome && chrome.storage && chrome.storage.session
         ? chrome.storage.session
         : chrome.storage.local;
+/**
+ *
+ * @param keys
+ */
 function cacheGet(keys) {
     return new Promise((resolve) => cacheArea.get(keys, resolve));
 }
+/**
+ *
+ * @param items
+ */
 function cacheSet(items) {
     return new Promise((resolve) => cacheArea.set(items, resolve));
 }
+/**
+ *
+ * @param keys
+ */
 function cacheRemove(keys) {
     return new Promise((resolve) => cacheArea.remove(keys, resolve));
 }
+/**
+ *
+ */
 function cacheGetAll() {
     return new Promise((resolve) => cacheArea.get(null, resolve));
 }
 
 // Dual-write helpers ensure popup/background remain in sync across Chrome versions
+/**
+ *
+ * @param items
+ */
 async function cacheSetDual(items) {
     try {
         await cacheSet(items);
@@ -366,6 +418,10 @@ async function cacheSetDual(items) {
         await chrome.storage.local.set(items);
     } catch (_) {}
 }
+/**
+ *
+ * @param keys
+ */
 async function cacheRemoveDual(keys) {
     try {
         await cacheRemove(keys);
@@ -376,6 +432,10 @@ async function cacheRemoveDual(keys) {
 }
 
 // Validate that a cached entry actually contains some size data
+/**
+ *
+ * @param cached
+ */
 function cacheHasAnySize(cached) {
     try {
         if (!cached) return false;
@@ -396,9 +456,9 @@ function cacheHasAnySize(cached) {
         const b = cached.bytes;
         const h = cached.human;
         if (b && keys.some((k) => typeof b[k] === "number" && isFinite(b[k])))
-            return true;
+            {return true;}
         if (h && keys.some((k) => typeof h[k] === "string" && h[k]))
-            return true;
+            {return true;}
         return false;
     } catch (_) {
         return false;
@@ -410,7 +470,6 @@ function cacheHasAnySize(cached) {
  *
  * Establishes a connection to the Python native host (ytdlp_host.py) which
  * runs yt-dlp to extract video format and size information.
- *
  * @async
  * @param {string} url - The YouTube video URL to analyze
  * @param {number} [durationHint] - Optional duration hint in seconds
@@ -482,7 +541,6 @@ function callNativeHost(url, durationHint) {
 
 /**
  * Checks if cached size data exists and is still fresh (within TTL)
- *
  * @async
  * @param {string} videoId - The YouTube video ID to check
  * @returns {Promise<boolean>} True if cache is fresh and contains valid size data
@@ -505,11 +563,10 @@ async function isFreshInCache(videoId) {
  * 3. Calls either the cloud API or native host to fetch sizes
  * 4. Updates the cache and notifies open popups
  * 5. Updates the browser action badge to show status
- *
  * @async
  * @param {string} url - The YouTube video URL to prefetch data for
  * @param {number} [tabId] - The tab ID to show badge updates on
- * @param {boolean} [forced=false] - If true, bypasses autoPrefetch setting and rate limits
+ * @param {boolean} [forced] - If true, bypasses autoPrefetch setting and rate limits
  * @returns {Promise<void>}
  */
 async function prefetchForUrl(url, tabId, forced = false) {
@@ -667,6 +724,9 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 // webNavigation listeners removed; content script notifies SPA navigations instead.
 
 // Prefetch on startup and install for existing tabs
+/**
+ *
+ */
 async function prefetchExistingYouTubeTabs() {
     try {
         // Only prefetch for active tab(s) to reduce unnecessary startup load
@@ -694,6 +754,9 @@ chrome.runtime.onInstalled.addListener(() => {
 // Context menus removed to minimize permissions and overhead
 
 // Cleanup old caches periodically
+/**
+ *
+ */
 async function cleanupOldCaches() {
     try {
         const all = await cacheGetAll();
@@ -717,6 +780,7 @@ async function cleanupOldCaches() {
 // opportunistically triggered in future updates if needed.
 
 // Accept prefetch requests from the popup
+// eslint-disable-next-line no-inner-declarations
 try {
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         try {
@@ -743,7 +807,7 @@ try {
                     const vid =
                         msg.videoId || (url ? extractVideoId(url) : null);
                     if (dur && vid)
-                        durationHints.set(vid, { d: dur, ts: Date.now() });
+                        {durationHints.set(vid, { d: dur, ts: Date.now() });}
                 } catch (_) {}
                 if (url && typeof tabId === "number") {
                     prefetchForUrl(url, tabId);
@@ -765,7 +829,7 @@ try {
                         : tabIdFromSender;
                 const url = msg.url;
                 if (url && typeof tabId === "number")
-                    ensureBadgeForTab(url, tabId);
+                    {ensureBadgeForTab(url, tabId);}
                 try {
                     sendResponse({ ok: true });
                 } catch (_) {}

@@ -8,6 +8,7 @@ const Sentry = require("@sentry/node");
 /**
  * Request ID middleware for distributed tracing
  * Generates or extracts correlation ID for tracking requests across services
+ * @param logger
  */
 function requestIdMiddleware(logger) {
     return (req, res, next) => {
@@ -30,6 +31,8 @@ function requestIdMiddleware(logger) {
 /**
  * Request/Response logging middleware
  * Logs all incoming requests and outgoing responses with timing information
+ * @param activeConnections
+ * @param isShuttingDown
  */
 function requestLoggingMiddleware(activeConnections, isShuttingDown) {
     return (req, res, next) => {

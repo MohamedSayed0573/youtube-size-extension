@@ -7,6 +7,15 @@ const express = require("express");
 const os = require("os");
 const { formatUptime } = require("../utils/ytdlp");
 
+/**
+ *
+ * @param config
+ * @param workerPool
+ * @param circuitBreaker
+ * @param redisState
+ * @param ytdlpPath
+ * @param logger
+ */
 function createHealthRoutes(
     config,
     workerPool,
@@ -82,8 +91,8 @@ function createHealthRoutes(
 
             // Check yt-dlp availability by checking if it's in PATH
             // Don't actually call it to keep health check fast
-            let ytdlpVersion = "unknown";
-            let ytdlpAvailable = ytdlpPath ? true : false;
+            const ytdlpVersion = "unknown";
+            const ytdlpAvailable = ytdlpPath ? true : false;
 
             // Determine overall health status
             let overallStatus = "healthy";

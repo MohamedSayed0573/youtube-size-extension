@@ -5,8 +5,7 @@
  * - URL validation and parsing
  * - Video ID extraction
  * - Data formatting (bytes, duration)
- *
- * @fileoverview Shared utilities to eliminate code duplication
+ * @file Shared utilities to eliminate code duplication
  * @module utils
  */
 
@@ -15,7 +14,6 @@
  *
  * Checks for valid YouTube domains (youtube.com, youtu.be) and ensures
  * the URL contains a video identifier (v param, /watch path, or /shorts path).
- *
  * @param {string} url - The URL to validate
  * @returns {boolean} True if the URL is a valid YouTube video URL
  * @example
@@ -44,7 +42,6 @@ function isYouTubeUrl(url) {
  * - Standard watch URLs: /watch?v=VIDEO_ID
  * - Short URLs: youtu.be/VIDEO_ID
  * - Shorts URLs: /shorts/VIDEO_ID
- *
  * @param {string} url - The YouTube URL to parse
  * @returns {string|null} The video ID (11-character string) or null if not found
  * @example
@@ -73,7 +70,6 @@ function extractVideoId(url) {
  *
  * Uses 1000-based (decimal) units: KB, MB, GB, TB.
  * This matches how storage is typically advertised and displayed.
- *
  * @param {number} n - Number of bytes
  * @returns {string|null} Formatted string (e.g., "45.32 MB") or null if invalid
  * @example
@@ -100,7 +96,6 @@ function humanizeBytes(n) {
  * Formats as:
  * - M:SS for durations under 1 hour
  * - H:MM:SS for durations 1 hour or longer
- *
  * @param {number} seconds - Duration in seconds
  * @returns {string|null} Formatted duration string or null if invalid
  * @example

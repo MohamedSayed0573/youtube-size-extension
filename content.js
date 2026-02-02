@@ -12,8 +12,7 @@
  * - Direct video element inspection (videoHeight, currentSrc)
  * - YouTube-specific events (yt-navigate-finish, yt-page-data-updated)
  * - Polling fallback for SPA navigation detection
- *
- * @fileoverview Content script for detecting YouTube video metadata
+ * @file Content script for detecting YouTube video metadata
  * @author YouTube Size Extension Team
  * @version 0.2.0
  */
@@ -39,7 +38,6 @@
      * - 399: 1080p AV1
      * - 308: 1440p VP9
      * - 400: 1440p AV1
-     *
      * @returns {string|null} The itag string (e.g., "399") or null if not found
      */
     function extractCurrentItag() {
@@ -61,7 +59,6 @@
      *
      * Uses nearest-match logic to map actual video heights to standard labels.
      * For example, a 1088px height would map to "1080p".
-     *
      * @param {number} h - The video height in pixels
      * @returns {string|null} Resolution label (e.g., "720p", "1080p") or null
      */
@@ -81,7 +78,6 @@
      *
      * Prefers YouTube's dedicated video.html5-main-video element, but falls back
      * to any playing video element if needed.
-     *
      * @returns {HTMLVideoElement|null} The video element or null if not found
      */
     function getVideoEl() {
@@ -110,8 +106,7 @@
      * - Current URL and video ID
      *
      * Implements debouncing to avoid sending duplicate messages when values haven't changed.
-     *
-     * @param {boolean} [force=false] - If true, bypasses debouncing and always sends
+     * @param {boolean} [force] - If true, bypasses debouncing and always sends
      * @returns {void}
      */
     function readAndNotify(force = false) {
@@ -132,7 +127,7 @@
             lastVideoId === videoId &&
             lastItag === itag
         )
-            return;
+            {return;}
         lastLabel = label;
         lastHeight = vh;
         lastVideoId = videoId;
@@ -167,8 +162,7 @@
      * YouTube is a Single Page Application that doesn't trigger full page reloads
      * when navigating between videos. This poller detects location.href changes
      * and triggers metadata updates.
-     *
-     * @param {number} [intervalMs=1500] - Polling interval in milliseconds
+     * @param {number} [intervalMs] - Polling interval in milliseconds
      * @returns {void}
      */
     function startUrlPoller(intervalMs = 1500) {
@@ -191,7 +185,6 @@
      * - yt-page-data-updated: YouTube's data refresh event
      * - popstate: Browser back/forward navigation
      * - visibilitychange: Tab becomes visible again
-     *
      * @returns {void}
      */
     function listenForSpaNavigations() {
@@ -236,7 +229,6 @@
      * - loadeddata: Video data is loaded
      * - resize: Video dimensions change
      * - play/seeked: Quality may change during playback
-     *
      * @returns {void}
      */
     function setup() {

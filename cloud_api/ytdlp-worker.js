@@ -12,10 +12,9 @@
  * - Automatic cleanup on completion
  *
  * Message Protocol:
- *   Input: { url: string, timeout: number, maxBuffer: number, retryAttempt: number }
- *   Output: { success: true, data: Object } | { success: false, error: string, code?: string }
- *
- * @fileoverview Worker thread for non-blocking yt-dlp execution
+ * Input: { url: string, timeout: number, maxBuffer: number, retryAttempt: number }
+ * Output: { success: true, data: Object } | { success: false, error: string, code?: string }
+ * @file Worker thread for non-blocking yt-dlp execution
  * @author YouTube Size Extension Team
  * @version 2.0.0
  */
@@ -28,7 +27,6 @@ const execFileAsync = promisify(execFile);
 
 /**
  * Execute yt-dlp with given parameters
- *
  * @param {string} url - YouTube video URL
  * @param {number} timeout - Timeout in milliseconds
  * @param {number} maxBuffer - Maximum buffer size for stdout/stderr

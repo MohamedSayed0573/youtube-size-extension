@@ -12,14 +12,13 @@
  *
  * Settings are persisted to chrome.storage.local and immediately affect
  * all extension components via storage.onChanged listeners.
- *
- * @fileoverview Options page controller
+ * @file Options page controller
  * @author YouTube Size Extension Team
  * @version 0.2.0
  */
 
 (function () {
-    /** @const {Object} Default settings values */
+    /** @constant {Object} Default settings values */
     const defaultSettings = {
         autoPrefetch: true,
         ttlHours: 24,
@@ -39,21 +38,39 @@
         return document.getElementById(id);
     }
 
+    /**
+     *
+     * @param keys
+     */
     async function storageGet(keys) {
         return new Promise((resolve) =>
             chrome.storage.local.get(keys, resolve)
         );
     }
+    /**
+     *
+     * @param items
+     */
     async function storageSet(items) {
         return new Promise((resolve) =>
             chrome.storage.local.set(items, resolve)
         );
     }
 
+    /**
+     *
+     * @param n
+     * @param min
+     * @param max
+     */
     function clamp(n, min, max) {
         return Math.max(min, Math.min(max, n));
     }
 
+    /**
+     *
+     * @param arr
+     */
     function setResCheckboxes(arr) {
         const set = new Set(arr || []);
         const ids = [
@@ -71,6 +88,9 @@
         }
     }
 
+    /**
+     *
+     */
     function getSelectedRes() {
         const res = [];
         if ($("res_1440")?.checked) res.push("1440p");
@@ -84,7 +104,6 @@
 
     /**
      * Loads saved settings from storage and populates the form
-     *
      * @async
      * @returns {Promise<void>}
      */
@@ -116,7 +135,6 @@
      *
      * Validates that at least one resolution is selected. If none are selected,
      * resets to default resolutions.
-     *
      * @async
      * @returns {Promise<void>}
      */
@@ -126,7 +144,7 @@
             1,
             48
         );
-        let selected = getSelectedRes();
+        const selected = getSelectedRes();
         const obj = {
             autoPrefetch: !!$("autoPrefetch").checked,
             ttlHours: ttl,
@@ -155,7 +173,6 @@
 
     /**
      * Resets all settings to default values
-     *
      * @async
      * @returns {Promise<void>}
      */
