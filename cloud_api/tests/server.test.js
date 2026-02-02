@@ -36,10 +36,13 @@ describe("Cloud API Server", () => {
             expect(response.status).toBe(200);
             expect(response.body).toHaveProperty("ok", true);
             expect(response.body).toHaveProperty("status");
+            expect(["healthy", "degraded"]).toContain(response.body.status);
             expect(response.body).toHaveProperty("timestamp");
             expect(response.body).toHaveProperty("system");
             expect(response.body).toHaveProperty("dependencies");
             expect(response.body.dependencies).toHaveProperty("ytdlp");
+            expect(response.body.dependencies.ytdlp).toHaveProperty("available");
+            expect(response.body.dependencies.ytdlp).toHaveProperty("version");
         });
 
         test("GET /api/v1/docs should return API documentation", async () => {
@@ -49,6 +52,37 @@ describe("Cloud API Server", () => {
             expect(response.body).toHaveProperty("version", "v1");
             expect(response.body).toHaveProperty("service", "ytdlp-sizer-api");
             expect(response.body).toHaveProperty("endpoints");
+            expect(response.body).toHaveProperty("features");
+            expect(response.body.features).toHaveProperty("requestTracing");
+            expect(response.body.features).toHaveProperty("retryLogic");
+        });
+    });
+
+    describe("Request Tracing", () => {
+        test("should generate X-Request-ID if not provided", async () => {
+            const response = await request(app).get("/");
+
+            expect(response.headers).toHaveProperty("x-request-id");
+            expect(response.headers["x-request-id"]).toMatch(/^req_/);
+        });
+
+        test("should preserve X-Request-ID from client", async () => {
+            const customId = "test-trace-123";
+            const response = await request(app)
+                .get("/")
+                .set("X-Request-ID", customId);
+
+            expect(response.headers["x-request-id"]).toBe(customId);
+        });
+
+        test("should include request ID in error responses", async () => {
+            const response = await request(app)
+                .post("/api/v1/size")
+                .send({ url: "invalid" });
+
+            expect(response.body).toHaveProperty("requestId");
+            expect(response.headers).toHaveProperty("x-request-id");
+            expect(response.body.requestId).toBe(response.headers["x-request-id"]);
         });
     });
 

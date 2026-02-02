@@ -39,15 +39,20 @@ const execFileAsync = promisify(execFile);
 
 // Initialize logger
 const logger = pino({
-    level: process.env.LOG_LEVEL || (process.env.NODE_ENV === "test" ? "silent" : "info"),
-    transport: process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test" ? {
-        target: "pino-pretty",
-        options: {
-            colorize: true,
-            translateTime: "SYS:standard",
-            ignore: "pid,hostname"
-        }
-    } : undefined
+    level:
+        process.env.LOG_LEVEL ||
+        (process.env.NODE_ENV === "test" ? "silent" : "info"),
+    transport:
+        process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test"
+            ? {
+                  target: "pino-pretty",
+                  options: {
+                      colorize: true,
+                      translateTime: "SYS:standard",
+                      ignore: "pid,hostname",
+                  },
+              }
+            : undefined,
 });
 
 // ============================================
@@ -91,9 +96,15 @@ try {
     const parsed = envSchema.safeParse(process.env);
 
     if (!parsed.success) {
-        logger.error({ errors: parsed.error.issues }, "Environment configuration validation failed");
+        logger.error(
+            { errors: parsed.error.issues },
+            "Environment configuration validation failed"
+        );
         parsed.error.issues.forEach((issue) => {
-            logger.error({ path: issue.path.join("."), message: issue.message }, "Validation error");
+            logger.error(
+                { path: issue.path.join("."), message: issue.message },
+                "Validation error"
+            );
         });
         process.exit(1);
     }
@@ -107,9 +118,15 @@ try {
                 : parsed.data.ALLOWED_ORIGINS.split(",").map((s) => s.trim()),
     };
 
-    logger.info({ config: CONFIG }, "Environment configuration validated successfully");
+    logger.info(
+        { config: CONFIG },
+        "Environment configuration validated successfully"
+    );
 } catch (error) {
-    logger.error({ error: error.message }, "Failed to parse environment configuration");
+    logger.error(
+        { error: error.message },
+        "Failed to parse environment configuration"
+    );
     process.exit(1);
 }
 
@@ -118,6 +135,25 @@ const app = express();
 // ============================================
 // Middleware Configuration
 // ============================================
+
+/**
+ * Request ID middleware for distributed tracing
+ * Generates or extracts correlation ID for tracking requests across services
+ */
+app.use((req, res, next) => {
+    // Check for existing request ID from proxy/load balancer
+    const requestId = req.headers['x-request-id'] || 
+                     req.headers['x-correlation-id'] || 
+                     `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    req.requestId = requestId;
+    res.setHeader('X-Request-ID', requestId);
+    
+    // Add to logger context
+    req.log = logger.child({ requestId });
+    
+    next();
+});
 
 // Enable CORS with restrictions (configure for production)
 const corsOptions = {
@@ -319,40 +355,65 @@ function sizeFromFormat(fmt, durationSec) {
 }
 
 /**
- * Extracts video metadata from YouTube using yt-dlp
+ * Extracts video metadata from YouTube using yt-dlp with retry logic
  *
  * Runs yt-dlp with -J flag to get complete metadata in JSON format.
  * Uses execFile() instead of exec() to prevent command injection.
- * Includes timeout protection and error handling.
+ * Includes timeout protection, error handling, and exponential backoff retry.
  *
  * @async
  * @param {string} url - The YouTube video URL (must be validated first)
+ * @param {number} [maxRetries=2] - Maximum number of retry attempts
  * @returns {Promise<Object>} Parsed JSON metadata from yt-dlp
- * @throws {Error} If yt-dlp fails or times out
+ * @throws {Error} If yt-dlp fails after all retries or times out
  */
-async function extractInfo(url) {
+async function extractInfo(url, maxRetries = 2) {
     // Use yt-dlp to extract metadata in JSON format
     // Using execFile instead of exec prevents command injection
     const args = ["-J", "--skip-download", "--no-playlist", url];
 
-    try {
-        const { stdout, stderr } = await execFileAsync("yt-dlp", args, {
-            timeout: CONFIG.YTDLP_TIMEOUT,
-            maxBuffer: CONFIG.YTDLP_MAX_BUFFER,
-            windowsHide: true, // Hide console window on Windows
-        });
+    let lastError;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const { stdout, stderr } = await execFileAsync("yt-dlp", args, {
+                timeout: CONFIG.YTDLP_TIMEOUT,
+                maxBuffer: CONFIG.YTDLP_MAX_BUFFER,
+                windowsHide: true, // Hide console window on Windows
+            });
 
-        if (stderr) {
-            logger.warn({ stderr }, "yt-dlp warnings");
-        }
+            if (stderr) {
+                logger.warn({ stderr, attempt }, "yt-dlp warnings");
+            }
 
-        return JSON.parse(stdout);
-    } catch (error) {
-        if (error.killed) {
-            throw new Error("yt-dlp timed out while fetching metadata");
+            return JSON.parse(stdout);
+        } catch (error) {
+            lastError = error;
+            
+            // Don't retry on timeout or client errors
+            if (error.killed || error.code === 'ENOENT') {
+                break;
+            }
+            
+            // Don't retry on final attempt
+            if (attempt < maxRetries) {
+                const backoffMs = Math.min(1000 * Math.pow(2, attempt), 5000);
+                logger.warn(
+                    { attempt, backoffMs, error: error.message },
+                    "Retrying yt-dlp after failure"
+                );
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+            }
         }
-        throw new Error(`Failed to fetch metadata: ${error.message}`);
     }
+
+    // All retries exhausted
+    if (lastError.killed) {
+        throw new Error("yt-dlp timed out while fetching metadata");
+    }
+    if (lastError.code === 'ENOENT') {
+        throw new Error("yt-dlp executable not found. Please install yt-dlp.");
+    }
+    throw new Error(`Failed to fetch metadata after ${maxRetries + 1} attempts: ${lastError.message}`);
 }
 
 /**
@@ -606,6 +667,11 @@ app.get("/api/v1/docs", (req, res) => {
             ? "Required: X-API-Key header"
             : "Optional",
         rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS} requests per ${CONFIG.RATE_LIMIT_WINDOW_MS / 1000} seconds`,
+        features: {
+            requestTracing: "X-Request-ID header for distributed tracing",
+            retryLogic: "Automatic retry with exponential backoff (up to 2 retries)",
+            cacheStrategy: "Client-side caching recommended (extension handles TTL)",
+        },
     });
 });
 
@@ -615,6 +681,7 @@ app.get("/api/v1/docs", (req, res) => {
 
 // Main size extraction endpoint (v1)
 app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
+    const startTime = Date.now();
     try {
         const { url, duration_hint } = req.body;
 
@@ -622,22 +689,27 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
         Sentry.addBreadcrumb({
             category: "api",
             message: "Video size request received",
-            data: { url, duration_hint },
+            data: { url, duration_hint, requestId: req.requestId },
             level: "info",
         });
 
+        req.log.info({ url, duration_hint }, "Processing size request");
+
         // Validate URL is provided
         if (!url) {
+            req.log.warn("Request missing URL parameter");
             return res
                 .status(400)
-                .json({ ok: false, error: "URL is required" });
+                .json({ ok: false, error: "URL is required", requestId: req.requestId });
         }
 
         // Validate URL is safe and is a YouTube URL
         if (!isValidYouTubeUrl(url)) {
+            req.log.warn({ url }, "Invalid or unsafe YouTube URL");
             return res.status(400).json({
                 ok: false,
                 error: "Invalid or unsafe YouTube URL",
+                requestId: req.requestId,
             });
         }
 
@@ -649,25 +721,52 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
                 duration_hint < 0 ||
                 duration_hint > 86400)
         ) {
+            req.log.warn({ duration_hint }, "Invalid duration_hint");
             return res.status(400).json({
                 ok: false,
                 error: "Invalid duration_hint (must be 0-86400 seconds)",
+                requestId: req.requestId,
             });
         }
 
-        // Extract metadata using yt-dlp
+        // Extract metadata using yt-dlp (with retries)
         const meta = await extractInfo(url);
 
         // Compute sizes
         const result = computeSizes(meta, duration_hint);
 
+        const duration = Date.now() - startTime;
+        req.log.info({ duration, videoId: meta.id }, "Request completed successfully");
+
         res.json(result);
     } catch (error) {
-        Sentry.captureException(error);
-        logger.error({ error: error.message, url: req.body.url }, "Error processing request");
-        res.status(error.message.includes("timed out") ? 504 : 502).json({
+        const duration = Date.now() - startTime;
+        Sentry.captureException(error, {
+            contexts: {
+                request: {
+                    requestId: req.requestId,
+                    url: req.body.url,
+                    duration,
+                },
+            },
+        });
+        req.log.error(
+            { error: error.message, url: req.body.url, duration },
+            "Error processing request"
+        );
+        
+        // Determine appropriate status code
+        let statusCode = 502;
+        if (error.message.includes("timed out")) {
+            statusCode = 504;
+        } else if (error.message.includes("not found")) {
+            statusCode = 503;
+        }
+        
+        res.status(statusCode).json({
             ok: false,
             error: error.message,
+            requestId: req.requestId,
         });
     }
 });
@@ -716,7 +815,10 @@ Sentry.setupExpressErrorHandler(app);
 // Global error handler
 app.use((err, req, res, next) => {
     // Error already captured by Sentry middleware above
-    logger.error({ err, path: req.path, method: req.method }, "Unhandled error");
+    logger.error(
+        { err, path: req.path, method: req.method },
+        "Unhandled error"
+    );
     res.status(500).json({
         ok: false,
         error: "Internal server error",
@@ -735,14 +837,17 @@ if (typeof module !== "undefined" && module.exports) {
 // Only start server if not in test mode
 if (CONFIG.NODE_ENV !== "test") {
     app.listen(CONFIG.PORT, "0.0.0.0", () => {
-        logger.info({
-            service: "ytdlp-sizer-api",
-            version: CONFIG.API_VERSION,
-            port: CONFIG.PORT,
-            environment: CONFIG.NODE_ENV,
-            authRequired: CONFIG.REQUIRE_AUTH,
-            rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min`,
-            endpoints: ["/", "/health", "/api/v1/size", "/api/v1/docs"]
-        }, "Server started successfully");
+        logger.info(
+            {
+                service: "ytdlp-sizer-api",
+                version: CONFIG.API_VERSION,
+                port: CONFIG.PORT,
+                environment: CONFIG.NODE_ENV,
+                authRequired: CONFIG.REQUIRE_AUTH,
+                rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min`,
+                endpoints: ["/", "/health", "/api/v1/size", "/api/v1/docs"],
+            },
+            "Server started successfully"
+        );
     });
 }

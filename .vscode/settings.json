@@ -35,5 +35,8 @@
     "**/dist": true,
     "**/build": true,
     "**/*.log": true
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
   }
 }

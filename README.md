@@ -102,13 +102,19 @@ npm start
 |----------|-------------|---------|
 | `PORT` | Server port | `3000` |
 | `NODE_ENV` | Environment (development/production/test) | `development` |
-| `SENTRY_DSN` | Sentry error tracking DSN | `` |
-| `API_KEY` | API authentication key | `` |
+| `SENTRY_DSN` | Sentry error tracking DSN (required for monitoring) | `` |
+| `API_KEY` | API authentication key (generate with `openssl rand -hex 32`) | `` |
 | `REQUIRE_AUTH` | Enable API key authentication | `false` |
-| `ALLOWED_ORIGINS` | CORS allowed origins | `*` |
+| `ALLOWED_ORIGINS` | CORS allowed origins (comma-separated or `*`) | `*` |
 | `RATE_LIMIT_WINDOW_MS` | Rate limit window | `60000` |
 | `RATE_LIMIT_MAX_REQUESTS` | Max requests per window | `20` |
 | `YTDLP_TIMEOUT` | yt-dlp execution timeout (ms) | `25000` |
+| `YTDLP_MAX_BUFFER` | Maximum buffer for yt-dlp output | `10485760` |
+
+**Configuration Validation:**
+- All environment variables are validated using Zod schemas at startup
+- Invalid configuration causes server to exit with detailed error messages
+- See [cloud_api/.env.example](cloud_api/.env.example) for complete examples
 
 ### Extension Settings
 
@@ -162,8 +168,12 @@ Extract video size information for multiple resolutions.
 ### Health Endpoints
 
 - `GET /` - Service information
-- `GET /health` - Health check with system metrics
-- `GET /api/v1/docs` - API documentation
+- `GET /health` - Comprehensive health check with:
+  - System metrics (CPU, memory, load)
+  - Process information
+  - **Dependency validation** (yt-dlp availability check)
+  - Configuration status
+  - Returns `healthy` or `degraded` status
 
 ## 🧪 Testing
 
@@ -218,6 +228,35 @@ docker run -p 3000:3000 \
 - **Shell metacharacter blocking**
 - **HTTPS enforcement** for YouTube URLs
 - **Request size limits** (10KB max)
+- **Request correlation** via X-Request-ID headers for tracing
+
+## 🏗️ Architecture Details
+
+### Request Flow & Error Recovery
+
+1. **Request Tracing**: Each request gets a unique ID (X-Request-ID) for distributed tracing
+2. **Retry Logic**: Failed yt-dlp calls automatically retry with exponential backoff (up to 2 retries)
+3. **Circuit Breaking**: Timeouts and fatal errors fail fast without retries
+4. **Graceful Degradation**: Health endpoint reports "degraded" status if yt-dlp unavailable
+
+### Cache Strategy
+
+**Extension (Client-Side):**
+- In-memory cache in background worker
+- Configurable TTL (default: 2 hours)
+- Cache key: `cache-{videoId}`
+- Stored in `chrome.storage.local`
+- Invalidation: Manual via options page or TTL expiry
+
+**Duration Hints:**
+- Collected from content script on page load
+- Cached for 1 hour to optimize yt-dlp calls
+- Reduces redundant `--get-duration` executions
+
+**Cloud API (Stateless):**
+- No server-side caching (stateless design)
+- Clients responsible for caching responses
+- Idempotent: Same request always returns same result (until video changes)
 
 ## 📊 Monitoring
 
@@ -231,9 +270,30 @@ https://sentry.io/organizations/YOUR_ORG/issues/
 
 # Metrics tracked:
 # - API response times
-# - Error rates
+# - Error rates with request context
 # - CPU profiling
 # - Request breadcrumbs
+# - Request correlation IDs
+```
+
+### Request Tracing
+
+All API requests include correlation IDs for distributed tracing:
+
+- **Header**: `X-Request-ID` (generated or forwarded from client)
+- **Format**: `req_{timestamp}_{random}`
+- **Propagation**: Included in logs, errors, and responses
+- **Usage**: Track requests across load balancers, proxies, and services
+
+Example:
+```bash
+curl -X POST http://localhost:3000/api/v1/size \
+  -H "Content-Type: application/json" \
+  -H "X-Request-ID: custom-trace-id-123" \
+  -d '{"url": "https://youtube.com/watch?v=VIDEO_ID"}'
+
+# Response includes:
+# X-Request-ID: custom-trace-id-123
 ```
 
 ### Logging

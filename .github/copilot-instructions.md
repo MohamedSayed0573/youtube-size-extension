@@ -160,6 +160,7 @@ Background worker stores in chrome.storage.local:
 ## External Dependencies
 
 **Cloud API:**
+
 - **@sentry/node**: Error tracking and performance monitoring (v10.38.0+)
 - **@sentry/profiling-node**: CPU profiling for performance analysis
 - **pino**: Structured logging (v8.17.2+)
@@ -169,6 +170,7 @@ Background worker stores in chrome.storage.local:
 - **zod**: Input validation (v3.22.4+)
 
 **Browser Extension:**
+
 - **yt-dlp** CLI tool: Must be in PATH for both native host and cloud API
 - **Chrome/Firefox APIs**: tabs, nativeMessaging, storage, action (badges)
 - **YouTube DOM**: Watches `ytd-player video.html5-main-video` element
@@ -217,12 +219,14 @@ npm run test:ci      # CI mode (force exit)
 ```
 
 **Coverage thresholds:**
+
 - Statements: 75%
 - Functions: 80%
 - Branches: 60%
 - Lines: 75%
 
 **Test categories:**
+
 - Health endpoints (3 tests)
 - API validation (8 tests)
 - Security features (5 tests)
@@ -232,25 +236,28 @@ npm run test:ci      # CI mode (force exit)
 ## Sentry Monitoring
 
 **Error Tracking:**
+
 - `instrument.js` initializes Sentry at startup (MUST be first require)
 - All uncaught exceptions automatically captured
 - Environment tagged (development/staging/production)
 - Breadcrumbs track user actions before error
 
 **Performance Monitoring:**
+
 - 100% sampling in development
 - 10% sampling in production
 - CPU profiling enabled (relative to trace sampling)
 - Automatic HTTP request tracking
 
 **Configuration:**
+
 ```javascript
 // instrument.js
 Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  environment: process.env.NODE_ENV,
-  tracesSampleRate: isProd ? 0.1 : 1.0,
-  profilesSampleRate: isProd ? 0.1 : 1.0,
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+    tracesSampleRate: isProd ? 0.1 : 1.0,
+    profilesSampleRate: isProd ? 0.1 : 1.0,
 });
 ```
 
@@ -276,7 +283,8 @@ Required secrets for deployment: `DOCKER_USERNAME`, `DOCKER_PASSWORD`, `RAILWAY_
 7. **Service worker imports**: Use `importScripts()` not ES6 imports
 8. **Native host logs**: stderr only (stdout reserved for protocol)
 9. **Logging**: Use `logger.info()`, `logger.error()`, NOT `console.log()`
-10. **Error context**: Always include relevant data in log objects: `logger.error({ url, error }, "msg")`
+10. **Error context**: Always include relevant data in log objects:
+    `logger.error({ url, error }, "msg")`
 11. **Sentry breadcrumbs**: Add for important API calls: `Sentry.addBreadcrumb({ message, data })`
 12. **Test mode**: Set `NODE_ENV=test` to silence logs in test suite
 13. **instrument.js**: MUST be first require in server.js (before other imports)
