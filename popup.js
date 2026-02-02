@@ -124,7 +124,7 @@
             const k = keyMap[r];
             if (k) {
                 bytesMap[k] = b;
-                humanMap[k] = humanizeBytesDecimal(b);
+                humanMap[k] = humanizeBytes(b);
             }
         }
         return { humanMap, bytesMap };
@@ -160,45 +160,6 @@
         }
     }
 
-    /**
-     * Converts bytes to human-readable format using decimal (SI) units
-     *
-     * Uses 1000-based units (KB, MB, GB, TB) as per SI standards.
-     *
-     * @param {number} n - The number of bytes to format
-     * @returns {string|null} Formatted string (e.g., "45.32 MB") or null if invalid
-     */
-    /**
-     * Converts bytes to human-readable format using decimal (SI) units
-     *
-     * Uses 1000-based units (KB, MB, GB, TB) as per SI standards.
-     *
-     * @param {number} n - The number of bytes to format
-     * @returns {string|null} Formatted string (e.g., "45.32 MB") or null if invalid
-     */
-    function humanizeBytesDecimal(n) {
-        if (n == null || !isFinite(n)) return null;
-        const units = ["B", "KB", "MB", "GB", "TB"];
-        let v = Number(n);
-        let i = 0;
-        while (v >= 1000 && i < units.length - 1) {
-            v /= 1000;
-            i++;
-        }
-        if (i === 0) return `${Math.trunc(v)} ${units[i]}`;
-        return `${v.toFixed(2)} ${units[i]}`;
-    }
-
-    /**
-     * Converts seconds to human-readable duration format
-     *
-     * Formats as:
-     * - H:MM:SS for videos over 1 hour
-     * - M:SS for videos under 1 hour
-     *
-     * @param {number} seconds - Duration in seconds
-     * @returns {string|null} Formatted duration (e.g., "5:32", "1:23:45") or null if invalid
-     */
     /**
      * Converts seconds to human-readable duration format
      *
@@ -385,7 +346,7 @@
             "1440p",
         ];
         const selectedOrdered = order.filter((r) =>
-            selectedResolutions.includes(r),
+            selectedResolutions.includes(r)
         );
         // Clear existing content safely
         while (sizesContainer.firstChild) {
@@ -417,7 +378,7 @@
             for (const def of variantDefs) {
                 const hv = humanMap && humanMap[def.key];
                 const bv = bytesMap && bytesMap[def.key];
-                const vv = hv || humanizeBytesDecimal(bv);
+                const vv = hv || humanizeBytes(bv);
                 if (vv) available.push({ def, value: vv });
             }
 
@@ -457,12 +418,12 @@
                 const parts = available
                     .map(
                         (v) =>
-                            `${v.def.codec}: ${lastIsEstimated ? "Est. " : ""}${v.value}`,
+                            `${v.def.codec}: ${lastIsEstimated ? "Est. " : ""}${v.value}`
                     )
                     .join("  |  ");
                 valueSpan.textContent = parts;
             } else {
-                const val = human || humanizeBytesDecimal(bytes) || "N/A";
+                const val = human || humanizeBytes(bytes) || "N/A";
                 valueSpan.textContent =
                     lastIsEstimated && val !== "N/A" ? `Est. ${val}` : val;
             }
@@ -514,45 +475,7 @@
         refreshBtn.style.display = "inline-block";
     }
 
-    // (humanizeBytesDecimal defined above)
-
-    /**
-     * Checks if a URL is a valid YouTube video URL
-     *
-     * @param {string} url - The URL to validate
-     * @returns {boolean} True if URL is a YouTube video page
-     */
-    function isYouTubeUrl(url) {
-        try {
-            const u = new URL(url);
-            return (
-                (u.host.includes("youtube.com") ||
-                    u.host.includes("youtu.be")) &&
-                (u.searchParams.has("v") ||
-                    u.pathname.startsWith("/watch") ||
-                    /\/shorts\//.test(u.pathname) ||
-                    u.host.includes("youtu.be"))
-            );
-        } catch (e) {
-            return false;
-        }
-    }
-
-    function extractVideoId(url) {
-        try {
-            const u = new URL(url);
-            if (u.hostname.includes("youtu.be")) {
-                const id = u.pathname.replace(/^\//, "").split("/")[0];
-                return id || null;
-            }
-            if (u.searchParams.has("v")) return u.searchParams.get("v");
-            const m = u.pathname.match(/\/shorts\/([\w-]{5,})/);
-            if (m) return m[1];
-            return null;
-        } catch (_) {
-            return null;
-        }
-    }
+    // Shared utility functions (isYouTubeUrl, extractVideoId, humanizeBytes) are available from utils.js
 
     function formatAge(ts) {
         const ageMs = Date.now() - ts;
@@ -643,7 +566,7 @@
             } catch (e) {
                 reject(
                     "Failed to connect to native host: " +
-                        (e && e.message ? e.message : String(e)),
+                        (e && e.message ? e.message : String(e))
                 );
                 return;
             }
@@ -656,7 +579,7 @@
                     } else {
                         reject(
                             (msg && msg.error) ||
-                                "Unknown error from native host.",
+                                "Unknown error from native host."
                         );
                     }
                 } finally {
@@ -690,7 +613,7 @@
             } catch (e) {
                 reject(
                     "Failed to send request to native host: " +
-                        (e && e.message ? e.message : String(e)),
+                        (e && e.message ? e.message : String(e))
                 );
             }
         });
@@ -700,7 +623,7 @@
         url,
         forced = false,
         tabId,
-        durationSec,
+        durationSec
     ) {
         return new Promise((resolve, reject) => {
             try {
@@ -754,13 +677,13 @@
                 () => {
                     const _e =
                         chrome && chrome.runtime && chrome.runtime.lastError; // ignore
-                },
+                }
             );
         } catch (_) {}
 
         if (!isYouTubeUrl(url)) {
             showError(
-                "Please open a YouTube video page and click the extension again.",
+                "Please open a YouTube video page and click the extension again."
             );
             return;
         }
@@ -768,7 +691,7 @@
         const videoId = extractVideoId(url);
         if (!videoId) {
             showError(
-                "Could not extract YouTube video ID from the current URL.",
+                "Could not extract YouTube video ID from the current URL."
             );
             return;
         }
@@ -800,7 +723,7 @@
                             }
                         }
                     }
-                },
+                }
             );
         } catch (_) {}
 
@@ -823,7 +746,7 @@
                 cached.human,
                 cached.bytes,
                 `Cached • ${formatAge(cached.timestamp)}`,
-                dur,
+                dur
             );
         } else if (cached && hasSizes) {
             const dur =
@@ -834,7 +757,7 @@
                 cached.human,
                 cached.bytes,
                 `Cached (stale) • ${formatAge(cached.timestamp)} • refreshing…`,
-                dur,
+                dur
             );
             startStatusSpinner("Refreshing");
         } else {
@@ -847,7 +770,7 @@
                     bytesMap,
                     "Estimated • fetching exact…",
                     humanizeDuration(currentDurationSec),
-                    true,
+                    true
                 );
             } else {
                 statusEl.textContent = "Contacting native host…";
@@ -862,13 +785,13 @@
                     url,
                     true /* forced */,
                     currentTabId,
-                    currentDurationSec || undefined,
+                    currentDurationSec || undefined
                 );
                 if (!resp || resp.ok === false) {
                     // Fallback: call native directly (older browsers or if messaging fails)
                     const msg = await callNativeHost(
                         url,
-                        currentDurationSec || undefined,
+                        currentDurationSec || undefined
                     );
                     if (msg && msg.ok) {
                         const dur =
@@ -886,7 +809,7 @@
                     } else {
                         throw new Error(
                             (msg && msg.error) ||
-                                "Unknown error from native host.",
+                                "Unknown error from native host."
                         );
                     }
                 } else {
@@ -903,7 +826,7 @@
                             cached2 && cached2.human,
                             cached2 && cached2.bytes,
                             "Up to date",
-                            dur,
+                            dur
                         );
                         stopStatusSpinner();
                         statusEl.style.display = "none";
@@ -951,7 +874,7 @@
                                 try {
                                     const msg = await callNativeHost(
                                         url,
-                                        currentDurationSec || undefined,
+                                        currentDurationSec || undefined
                                     );
                                     if (msg && msg.ok) {
                                         const dur =
@@ -967,7 +890,7 @@
                                             msg.human,
                                             msg.bytes,
                                             "Just updated",
-                                            dur,
+                                            dur
                                         );
                                         stopStatusSpinner();
                                         statusEl.style.display = "none";
@@ -987,7 +910,7 @@
                                 cached3 && cached3.human,
                                 cached3 && cached3.bytes,
                                 "Using cached result",
-                                dur,
+                                dur
                             );
                             stopStatusSpinner();
                             statusEl.style.display = "none";
@@ -1003,7 +926,7 @@
                 } else {
                     showError(
                         "Failed to fetch: " +
-                            (e && e.message ? e.message : String(e)),
+                            (e && e.message ? e.message : String(e))
                     );
                 }
             }
@@ -1053,7 +976,7 @@
                             cached2 && cached2.human,
                             cached2 && cached2.bytes,
                             "Just updated",
-                            dur,
+                            dur
                         );
                         stopStatusSpinner();
                         statusEl.style.display = "none";
@@ -1066,7 +989,7 @@
                     try {
                         const msg2 = await callNativeHost(
                             currentUrl,
-                            currentDurationSec || undefined,
+                            currentDurationSec || undefined
                         );
                         if (msg2 && msg2.ok) {
                             const dur =
@@ -1082,7 +1005,7 @@
                                 msg2.human,
                                 msg2.bytes,
                                 "Just updated",
-                                dur,
+                                dur
                             );
                             noteEl.textContent = "Just updated";
                             return;
@@ -1100,7 +1023,7 @@
         }
     } catch (e) {
         showError(
-            "Unexpected error: " + (e && e.message ? e.message : String(e)),
+            "Unexpected error: " + (e && e.message ? e.message : String(e))
         );
     }
 })();

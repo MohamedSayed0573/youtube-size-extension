@@ -9,10 +9,14 @@
  * - Badge indicators and status updates
  * - Duration hints collection from content script
  *
- * @fileoverview Main background service worker for the extension
+ * @fileoverview Background service worker for video size management
+ * @requires utils.js - Shared utility functions
  * @author YouTube Size Extension Team
  * @version 0.2.0
  */
+
+// Import shared utilities
+importScripts("utils.js");
 
 /** @const {string} The native messaging host identifier */
 const HOST_NAME = "com.ytdlp.sizer";
@@ -78,7 +82,7 @@ async function callCloudApi(url, durationHint) {
         } catch (_) {}
         if (!res.ok || !json)
             throw new Error(
-                (json && json.error) || `Cloud API HTTP ${res.status}`,
+                (json && json.error) || `Cloud API HTTP ${res.status}`
             );
         if (!json.ok) throw new Error(json.error || "Cloud API returned error");
         return json; // { ok, human, bytes, duration? }
@@ -318,57 +322,7 @@ try {
     });
 } catch (_) {}
 
-/**
- * Checks if a URL is a valid YouTube video URL
- *
- * Supports multiple YouTube URL formats:
- * - Standard: https://www.youtube.com/watch?v=VIDEO_ID
- * - Shorts: https://www.youtube.com/shorts/VIDEO_ID
- * - Short URL: https://youtu.be/VIDEO_ID
- *
- * @param {string} url - The URL to check
- * @returns {boolean} True if the URL is a YouTube video URL, false otherwise
- */
-function isYouTubeUrl(url) {
-    try {
-        const u = new URL(url);
-        return (
-            (u.host.includes("youtube.com") || u.host.includes("youtu.be")) &&
-            (u.searchParams.has("v") ||
-                u.pathname.startsWith("/watch") ||
-                u.host.includes("youtu.be") ||
-                /\/shorts\//.test(u.pathname))
-        );
-    } catch (_) {
-        return false;
-    }
-}
-
-/**
- * Extracts the video ID from various YouTube URL formats
- *
- * @param {string} url - The YouTube URL to parse
- * @returns {string|null} The video ID (11-character string) or null if not found
- * @example
- *   extractVideoId('https://youtube.com/watch?v=dQw4w9WgXcQ') // 'dQw4w9WgXcQ'
- *   extractVideoId('https://youtu.be/dQw4w9WgXcQ') // 'dQw4w9WgXcQ'
- *   extractVideoId('https://youtube.com/shorts/dQw4w9WgXcQ') // 'dQw4w9WgXcQ'
- */
-function extractVideoId(url) {
-    try {
-        const u = new URL(url);
-        if (u.hostname.includes("youtu.be")) {
-            const id = u.pathname.replace(/^\//, "").split("/")[0];
-            return id || null;
-        }
-        if (u.searchParams.has("v")) return u.searchParams.get("v");
-        const m = u.pathname.match(/\/shorts\/([\w-]{5,})/);
-        if (m) return m[1];
-        return null;
-    } catch (_) {
-        return null;
-    }
-}
+// Shared utility functions (isYouTubeUrl, extractVideoId) are imported from utils.js
 
 function storageGet(keys) {
     return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
@@ -469,7 +423,7 @@ function callNativeHost(url, durationHint) {
         } catch (e) {
             reject(
                 "Failed to connect to native host: " +
-                    (e && e.message ? e.message : String(e)),
+                    (e && e.message ? e.message : String(e))
             );
             return;
         }
@@ -484,7 +438,7 @@ function callNativeHost(url, durationHint) {
                     resolve(msg);
                 } else {
                     reject(
-                        (msg && msg.error) || "Unknown error from native host.",
+                        (msg && msg.error) || "Unknown error from native host."
                     );
                 }
             } finally {
@@ -518,7 +472,7 @@ function callNativeHost(url, durationHint) {
         } catch (e) {
             reject(
                 "Failed to send request to native host: " +
-                    (e && e.message ? e.message : String(e)),
+                    (e && e.message ? e.message : String(e))
             );
         }
     });
@@ -625,7 +579,7 @@ async function prefetchForUrl(url, tabId, forced = false) {
                             chrome &&
                             chrome.runtime &&
                             chrome.runtime.lastError; // swallow
-                    },
+                    }
                 );
             } catch (_) {}
 
@@ -678,7 +632,7 @@ async function prefetchForUrl(url, tabId, forced = false) {
                 () => {
                     const _e =
                         chrome && chrome.runtime && chrome.runtime.lastError; // swallow
-                },
+                }
             );
         } catch (_) {}
         // Swallow errors; background prefetch is best-effort

@@ -547,7 +547,7 @@ def compute_sizes_from_json_all(meta: dict, duration_hint: Optional[int] = None)
     audio_b = a251_b if a251_b is not None else audio_fb
 
     heights = [(144, '394'), (240, '395'), (360, '396'), (480, '397'), (720, '398'), (1080, '399'), (1440, '400')]
-    sizes = { 's144': None, 's240': None, 's360': None, 's480': None, 's720': None, 's1080': None, 's1440': None }
+    sizes = { 's144p': None, 's240p': None, 's360p': None, 's480p': None, 's720p': None, 's1080p': None, 's1440p': None }
     video_only = { 'v394': None, 'v395': None, 'v396': None, 'v397': None, 'v398': None, 'v399': None, 'v400': None,
                    'v299': None, 'v303': None, 'v308': None }
 
@@ -564,7 +564,7 @@ def compute_sizes_from_json_all(meta: dict, duration_hint: Optional[int] = None)
         video_only[video_only_key] = v_b
 
         # Combine with audio if possible
-        s_key = f"s{h}"
+        s_key = f"s{h}p"
         if v_b is not None and audio_b is not None:
             sizes[s_key] = int(v_b + audio_b)
         else:
@@ -677,13 +677,13 @@ def main():
 
     if j_code == 0 and meta:
         sizes_by_h, video_only_by_id, a251_b, dur_sec = compute_sizes_from_json_all(meta, duration_hint)
-        s144 = sizes_by_h.get('s144')
-        s240 = sizes_by_h.get('s240')
-        s360 = sizes_by_h.get('s360')
-        s480 = sizes_by_h.get('s480')
-        s720 = sizes_by_h.get('s720')
-        s1080 = sizes_by_h.get('s1080')
-        s1440 = sizes_by_h.get('s1440')
+        s144 = sizes_by_h.get('s144p')
+        s240 = sizes_by_h.get('s240p')
+        s360 = sizes_by_h.get('s360p')
+        s480 = sizes_by_h.get('s480p')
+        s720 = sizes_by_h.get('s720p')
+        s1080 = sizes_by_h.get('s1080p')
+        s1440 = sizes_by_h.get('s1440p')
         v144 = video_only_by_id.get('v394')
         v240 = video_only_by_id.get('v395')
         v360 = video_only_by_id.get('v396')

@@ -11,12 +11,13 @@
   "content_scripts": [
     {
       "matches": ["https://*.youtube.com/*", "https://youtu.be/*"],
-      "js": ["content.js"],
+      "js": ["utils.js", "content.js"],
       "run_at": "document_idle"
     }
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "options_ui": {
     "page": "options.html",

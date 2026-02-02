@@ -38,43 +38,42 @@ const execFileAsync = promisify(execFile);
 // Environment Configuration with Zod Validation
 // ============================================
 
-const envSchema = z.object({
-    // Server configuration
-    PORT: z.string().default("3000").transform(Number),
-    NODE_ENV: z.enum(["development", "staging", "production"]).default("development"),
-    
-    // Authentication
-    API_KEY: z.string().optional().default(""),
-    REQUIRE_AUTH: z.string().transform((val) => val === "true").default("false"),
-    
-    // CORS configuration
-    ALLOWED_ORIGINS: z.string().optional().default("*"),
-    
-    // Rate limiting
-    RATE_LIMIT_WINDOW_MS: z.string().default("60000").transform(Number),
-    RATE_LIMIT_MAX_REQUESTS: z.string().default("20").transform(Number),
-    RATE_LIMIT_HEALTH_MAX: z.string().default("100").transform(Number),
-    
-    // yt-dlp configuration
-    YTDLP_TIMEOUT: z.string().default("25000").transform(Number),
-    YTDLP_MAX_BUFFER: z.string().default("10485760").transform(Number),
-    
-    // Feature flags
-    ENABLE_HEALTH_DETAILS: z.string().transform((val) => val !== "false").default("true"),
-    ENABLE_METRICS: z.string().transform((val) => val !== "false").default("true"),
-}).refine(
-    (data) => !data.REQUIRE_AUTH || data.API_KEY !== "",
-    {
+const envSchema = z
+    .object({
+        // Server configuration
+        PORT: z.string().default("3000").transform(Number),
+        NODE_ENV: z
+            .enum(["development", "staging", "production"])
+            .default("development"),
+
+        // Authentication
+        API_KEY: z.string().optional().default(""),
+        REQUIRE_AUTH: z
+            .string()
+            .transform((val) => val === "true")
+            .default("false"),
+
+        // CORS configuration
+        ALLOWED_ORIGINS: z.string().optional().default("*"),
+
+        // Rate limiting
+        RATE_LIMIT_WINDOW_MS: z.string().default("60000").transform(Number),
+        RATE_LIMIT_MAX_REQUESTS: z.string().default("20").transform(Number),
+
+        // yt-dlp configuration
+        YTDLP_TIMEOUT: z.string().default("25000").transform(Number),
+        YTDLP_MAX_BUFFER: z.string().default("10485760").transform(Number),
+    })
+    .refine((data) => !data.REQUIRE_AUTH || data.API_KEY !== "", {
         message: "API_KEY must be set when REQUIRE_AUTH is true",
         path: ["API_KEY"],
-    }
-);
+    });
 
 // Validate and parse environment variables
 let CONFIG;
 try {
     const parsed = envSchema.safeParse(process.env);
-    
+
     if (!parsed.success) {
         console.error("❌ Environment configuration validation failed:");
         parsed.error.issues.forEach((issue) => {
@@ -82,101 +81,26 @@ try {
         });
         process.exit(1);
     }
-    
+
     CONFIG = {
         ...parsed.data,
         API_VERSION: "v1",
-        ALLOWED_ORIGINS: parsed.data.ALLOWED_ORIGINS === "*" 
-            ? "*" 
-            : parsed.data.ALLOWED_ORIGINS.split(",").map(s => s.trim()),
+        ALLOWED_ORIGINS:
+            parsed.data.ALLOWED_ORIGINS === "*"
+                ? "*"
+                : parsed.data.ALLOWED_ORIGINS.split(",").map((s) => s.trim()),
     };
-    
+
     console.log("✅ Environment configuration validated successfully");
 } catch (error) {
-    console.error("❌ Failed to parse environment configuration:", error.message);
+    console.error(
+        "❌ Failed to parse environment configuration:",
+        error.message
+    );
     process.exit(1);
 }
 
 const app = express();
-
-// ============================================
-// Metrics Tracking
-// ============================================
-const metrics = {
-    startTime: Date.now(),
-    requests: {
-        total: 0,
-        success: 0,
-        failed: 0,
-        byEndpoint: {},
-    },
-    errors: {
-        validation: 0,
-        ytdlp: 0,
-        timeout: 0,
-        auth: 0,
-        rateLimit: 0,
-    },
-    performance: {
-        avgResponseTime: 0,
-        minResponseTime: Infinity,
-        maxResponseTime: 0,
-        totalResponseTime: 0,
-    },
-};
-
-/**
- * Middleware to track request metrics
- */
-function metricsMiddleware(req, res, next) {
-    if (!CONFIG.ENABLE_METRICS) return next();
-    
-    const startTime = Date.now();
-    const endpoint = `${req.method} ${req.path}`;
-    
-    metrics.requests.total++;
-    metrics.requests.byEndpoint[endpoint] = 
-        (metrics.requests.byEndpoint[endpoint] || 0) + 1;
-    
-    // Capture response
-    const originalSend = res.send;
-    res.send = function (data) {
-        const duration = Date.now() - startTime;
-        
-        // Update performance metrics
-        metrics.performance.totalResponseTime += duration;
-        metrics.performance.avgResponseTime = 
-            metrics.performance.totalResponseTime / metrics.requests.total;
-        metrics.performance.minResponseTime = Math.min(
-            metrics.performance.minResponseTime,
-            duration
-        );
-        metrics.performance.maxResponseTime = Math.max(
-            metrics.performance.maxResponseTime,
-            duration
-        );
-        
-        // Track success/failure
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-            metrics.requests.success++;
-        } else {
-            metrics.requests.failed++;
-            
-            // Track error types
-            if (res.statusCode === 401) metrics.errors.auth++;
-            if (res.statusCode === 429) metrics.errors.rateLimit++;
-            if (res.statusCode === 400) metrics.errors.validation++;
-            if (res.statusCode === 502 || res.statusCode === 504) {
-                if (res.statusCode === 504) metrics.errors.timeout++;
-                else metrics.errors.ytdlp++;
-            }
-        }
-        
-        return originalSend.call(this, data);
-    };
-    
-    next();
-}
 
 // ============================================
 // Middleware Configuration
@@ -191,7 +115,6 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "10kb" })); // Limit request body size
-app.use(metricsMiddleware); // Track metrics
 
 // Rate limiting configuration
 const apiLimiter = rateLimit({
@@ -204,14 +127,6 @@ const apiLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => CONFIG.NODE_ENV === "development" && !CONFIG.REQUIRE_AUTH,
-});
-
-// Separate rate limiter for health endpoints (more permissive)
-const healthLimiter = rateLimit({
-    windowMs: CONFIG.RATE_LIMIT_WINDOW_MS,
-    max: CONFIG.RATE_LIMIT_HEALTH_MAX,
-    standardHeaders: true,
-    legacyHeaders: false,
 });
 
 // Map of interesting format ids by resolution
@@ -357,13 +272,6 @@ function humanizeDuration(seconds) {
     return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function pickFirst(...vals) {
-    for (const v of vals) {
-        if (v != null && v > 0) return v;
-    }
-    return null;
-}
-
 /**
  * Calculates file size from a yt-dlp format object
  *
@@ -377,7 +285,12 @@ function pickFirst(...vals) {
 function sizeFromFormat(fmt, durationSec) {
     if (!fmt) return null;
 
-    const fs = pickFirst(fmt.filesize, fmt.filesize_approx);
+    // Pick first non-null, positive value
+    const fs =
+        (fmt.filesize != null && fmt.filesize > 0 ? fmt.filesize : null) ||
+        (fmt.filesize_approx != null && fmt.filesize_approx > 0
+            ? fmt.filesize_approx
+            : null);
     if (fs) return Math.round(fs);
 
     // Estimate from TBR if filesize missing
@@ -574,29 +487,10 @@ app.get("/", (req, res) => {
 });
 
 /**
- * Basic health check endpoint
- * Returns 200 if service is running
+ * Health check endpoint
+ * Returns comprehensive system metrics, yt-dlp status, and service info
  */
-app.get("/health", healthLimiter, (req, res) => {
-    res.json({
-        ok: true,
-        status: "healthy",
-        timestamp: new Date().toISOString(),
-    });
-});
-
-/**
- * Detailed health check endpoint
- * Returns system metrics, yt-dlp version, and service stats
- */
-app.get("/health/detailed", healthLimiter, async (req, res) => {
-    if (!CONFIG.ENABLE_HEALTH_DETAILS) {
-        return res.status(403).json({
-            ok: false,
-            error: "Detailed health metrics are disabled",
-        });
-    }
-
+app.get("/health", apiLimiter, async (req, res) => {
     try {
         // Check yt-dlp availability and version
         let ytdlpVersion = "unknown";
@@ -612,7 +506,7 @@ app.get("/health/detailed", healthLimiter, async (req, res) => {
         }
 
         // System metrics
-        const uptime = Math.floor((Date.now() - metrics.startTime) / 1000);
+        const uptime = Math.floor(process.uptime());
         const memUsage = process.memoryUsage();
 
         res.json({
@@ -633,7 +527,10 @@ app.get("/health/detailed", healthLimiter, async (req, res) => {
                     total: os.totalmem(),
                     free: os.freemem(),
                     used: os.totalmem() - os.freemem(),
-                    usagePercent: ((1 - os.freemem() / os.totalmem()) * 100).toFixed(2),
+                    usagePercent: (
+                        (1 - os.freemem() / os.totalmem()) *
+                        100
+                    ).toFixed(2),
                 },
                 loadAverage: os.loadavg(),
             },
@@ -656,9 +553,10 @@ app.get("/health/detailed", healthLimiter, async (req, res) => {
             config: {
                 environment: CONFIG.NODE_ENV,
                 authEnabled: CONFIG.REQUIRE_AUTH,
-                corsOrigins: CONFIG.ALLOWED_ORIGINS === "*" 
-                    ? "all" 
-                    : CONFIG.ALLOWED_ORIGINS.length,
+                corsOrigins:
+                    CONFIG.ALLOWED_ORIGINS === "*"
+                        ? "all"
+                        : CONFIG.ALLOWED_ORIGINS.length,
                 rateLimit: {
                     windowMs: CONFIG.RATE_LIMIT_WINDOW_MS,
                     maxRequests: CONFIG.RATE_LIMIT_MAX_REQUESTS,
@@ -675,73 +573,6 @@ app.get("/health/detailed", healthLimiter, async (req, res) => {
 });
 
 /**
- * Metrics endpoint
- * Returns request statistics and performance metrics
- */
-app.get("/health/metrics", healthLimiter, (req, res) => {
-    if (!CONFIG.ENABLE_METRICS) {
-        return res.status(403).json({
-            ok: false,
-            error: "Metrics are disabled",
-        });
-    }
-
-    const uptime = Math.floor((Date.now() - metrics.startTime) / 1000);
-
-    res.json({
-        ok: true,
-        timestamp: new Date().toISOString(),
-        uptime: {
-            seconds: uptime,
-            formatted: formatUptime(uptime),
-        },
-        requests: {
-            total: metrics.requests.total,
-            success: metrics.requests.success,
-            failed: metrics.requests.failed,
-            successRate: metrics.requests.total > 0
-                ? ((metrics.requests.success / metrics.requests.total) * 100).toFixed(2) + "%"
-                : "N/A",
-            byEndpoint: metrics.requests.byEndpoint,
-        },
-        errors: metrics.errors,
-        performance: {
-            avgResponseTime: Math.round(metrics.performance.avgResponseTime) + "ms",
-            minResponseTime: metrics.performance.minResponseTime === Infinity
-                ? "N/A"
-                : metrics.performance.minResponseTime + "ms",
-            maxResponseTime: metrics.performance.maxResponseTime + "ms",
-        },
-    });
-});
-
-/**
- * Readiness probe endpoint
- * Checks if service is ready to accept requests
- */
-app.get("/health/ready", healthLimiter, async (req, res) => {
-    try {
-        // Check if yt-dlp is available
-        await execFileAsync("yt-dlp", ["--version"], { timeout: 5000 });
-        res.json({ ok: true, ready: true });
-    } catch (error) {
-        res.status(503).json({
-            ok: false,
-            ready: false,
-            reason: "yt-dlp not available",
-        });
-    }
-});
-
-/**
- * Liveness probe endpoint
- * Simple check that service is alive
- */
-app.get("/health/live", healthLimiter, (req, res) => {
-    res.json({ ok: true, alive: true });
-});
-
-/**
  * API documentation endpoint
  */
 app.get("/api/v1/docs", (req, res) => {
@@ -752,11 +583,7 @@ app.get("/api/v1/docs", (req, res) => {
         endpoints: {
             health: {
                 "GET /": "Root endpoint with basic info",
-                "GET /health": "Basic health check",
-                "GET /health/detailed": "Detailed health metrics",
-                "GET /health/metrics": "Request and performance metrics",
-                "GET /health/ready": "Readiness probe",
-                "GET /health/live": "Liveness probe",
+                "GET /health": "Health check with system metrics",
             },
             api: {
                 "POST /api/v1/size": "Extract video size information",
@@ -823,52 +650,6 @@ app.post("/api/v1/size", apiLimiter, authenticateApiKey, async (req, res) => {
     }
 });
 
-// Legacy endpoint for backward compatibility (deprecated)
-app.post("/size", apiLimiter, authenticateApiKey, async (req, res) => {
-    try {
-        const { url, duration_hint } = req.body;
-
-        if (!url) {
-            return res
-                .status(400)
-                .json({ ok: false, error: "URL is required" });
-        }
-
-        if (!isValidYouTubeUrl(url)) {
-            return res.status(400).json({
-                ok: false,
-                error: "Invalid or unsafe YouTube URL",
-            });
-        }
-
-        if (
-            duration_hint !== undefined &&
-            (typeof duration_hint !== "number" ||
-                !isFinite(duration_hint) ||
-                duration_hint < 0 ||
-                duration_hint > 86400)
-        ) {
-            return res.status(400).json({
-                ok: false,
-                error: "Invalid duration_hint (must be 0-86400 seconds)",
-            });
-        }
-
-        const meta = await extractInfo(url);
-        const result = computeSizes(meta, duration_hint);
-
-        // Add deprecation warning
-        result.warning = "This endpoint is deprecated. Please use /api/v1/size instead.";
-        res.json(result);
-    } catch (error) {
-        console.error("Error processing request:", error);
-        res.status(error.message.includes("timed out") ? 504 : 502).json({
-            ok: false,
-            error: error.message,
-        });
-    }
-});
-
 // ============================================
 // Utility Functions
 // ============================================
@@ -920,21 +701,27 @@ app.use((err, req, res, next) => {
 // ============================================
 
 app.listen(CONFIG.PORT, "0.0.0.0", () => {
-    console.log(`┌${'─'.repeat(50)}┐`);
-    console.log(`│ ytdlp-sizer-api v${CONFIG.API_VERSION}${' '.repeat(31)}│`);
-    console.log(`├${'─'.repeat(50)}┤`);
-    console.log(`│ Status: Running${' '.repeat(33)}│`);
-    console.log(`│ Port: ${CONFIG.PORT}${' '.repeat(43 - CONFIG.PORT.toString().length)}│`);
-    console.log(`│ Environment: ${CONFIG.NODE_ENV}${' '.repeat(36 - CONFIG.NODE_ENV.length)}│`);
-    console.log(`│ Auth Required: ${CONFIG.REQUIRE_AUTH}${' '.repeat(32 - CONFIG.REQUIRE_AUTH.toString().length)}│`);
-    console.log(`│ Rate Limit: ${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min${' '.repeat(33 - CONFIG.RATE_LIMIT_MAX_REQUESTS.toString().length)}│`);
-    console.log(`├${'─'.repeat(50)}┤`);
-    console.log(`│ Endpoints:${' '.repeat(39)}│`);
-    console.log(`│   GET  /${' '.repeat(43)}│`);
-    console.log(`│   GET  /health${' '.repeat(35)}│`);
-    console.log(`│   GET  /health/detailed${' '.repeat(26)}│`);
-    console.log(`│   GET  /health/metrics${' '.repeat(27)}│`);
-    console.log(`│   POST /api/v1/size${' '.repeat(30)}│`);
-    console.log(`│   GET  /api/v1/docs${' '.repeat(30)}│`);
-    console.log(`└${'─'.repeat(50)}┘`);
+    console.log(`┌${"─".repeat(50)}┐`);
+    console.log(`│ ytdlp-sizer-api v${CONFIG.API_VERSION}${" ".repeat(31)}│`);
+    console.log(`├${"─".repeat(50)}┤`);
+    console.log(`│ Status: Running${" ".repeat(33)}│`);
+    console.log(
+        `│ Port: ${CONFIG.PORT}${" ".repeat(43 - CONFIG.PORT.toString().length)}│`
+    );
+    console.log(
+        `│ Environment: ${CONFIG.NODE_ENV}${" ".repeat(36 - CONFIG.NODE_ENV.length)}│`
+    );
+    console.log(
+        `│ Auth Required: ${CONFIG.REQUIRE_AUTH}${" ".repeat(32 - CONFIG.REQUIRE_AUTH.toString().length)}│`
+    );
+    console.log(
+        `│ Rate Limit: ${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min${" ".repeat(33 - CONFIG.RATE_LIMIT_MAX_REQUESTS.toString().length)}│`
+    );
+    console.log(`├${"─".repeat(50)}┤`);
+    console.log(`│ Endpoints:${" ".repeat(39)}│`);
+    console.log(`│   GET  /${" ".repeat(43)}│`);
+    console.log(`│   GET  /health${" ".repeat(35)}│`);
+    console.log(`│   POST /api/v1/size${" ".repeat(30)}│`);
+    console.log(`│   GET  /api/v1/docs${" ".repeat(30)}│`);
+    console.log(`└${"─".repeat(50)}┘`);
 });

@@ -25,27 +25,7 @@
     let lastVideoId = null;
     let lastItag = null;
 
-    /**
-     * Checks if a URL is a valid YouTube video page
-     *
-     * @param {string} url - The URL to validate
-     * @returns {boolean} True if URL is a YouTube video page
-     */
-    function isYouTubeUrl(url) {
-        try {
-            const u = new URL(url);
-            return (
-                (u.host.includes("youtube.com") ||
-                    u.host.includes("youtu.be")) &&
-                (u.searchParams.has("v") ||
-                    u.pathname.startsWith("/watch") ||
-                    /\/shorts\//.test(u.pathname) ||
-                    u.host.includes("youtu.be"))
-            );
-        } catch (_) {
-            return false;
-        }
-    }
+    // Shared utility functions (isYouTubeUrl, extractVideoId) are available from utils.js
 
     /**
      * Extracts the current video format itag from the video element's source URL
@@ -69,33 +49,6 @@
             const u = new URL(src);
             const it = u.searchParams.get("itag");
             return it || null;
-        } catch (_) {
-            return null;
-        }
-    }
-
-    /**
-     * Extracts the YouTube video ID from a URL
-     *
-     * Handles multiple URL formats:
-     * - Standard watch URLs: /watch?v=VIDEO_ID
-     * - Short URLs: youtu.be/VIDEO_ID
-     * - Shorts URLs: /shorts/VIDEO_ID
-     *
-     * @param {string} url - The YouTube URL to parse
-     * @returns {string|null} The 11-character video ID or null
-     */
-    function extractVideoId(url) {
-        try {
-            const u = new URL(url);
-            if (u.hostname.includes("youtu.be")) {
-                const id = u.pathname.replace(/^\//, "").split("/")[0];
-                return id || null;
-            }
-            if (u.searchParams.has("v")) return u.searchParams.get("v");
-            const m = u.pathname.match(/\/shorts\/([\w-]{5,})/);
-            if (m) return m[1];
-            return null;
         } catch (_) {
             return null;
         }
@@ -132,7 +85,7 @@
     function getVideoEl() {
         // Prefer YouTube's main video element
         const main = document.querySelector(
-            "ytd-player video.html5-main-video",
+            "ytd-player video.html5-main-video"
         );
         if (main) return main;
         // Fallback: first playing video element
@@ -198,7 +151,7 @@
                     const _e =
                         chrome && chrome.runtime && chrome.runtime.lastError;
                     void _e;
-                },
+                }
             );
         } catch (_) {}
     }
@@ -251,25 +204,25 @@
         window.addEventListener(
             "yt-navigate-finish",
             () => onChange(location.href),
-            true,
+            true
         );
         window.addEventListener(
             "yt-page-data-updated",
             () => onChange(location.href),
-            true,
+            true
         );
         // Fallbacks
         window.addEventListener(
             "popstate",
             () => onChange(location.href),
-            true,
+            true
         );
         document.addEventListener(
             "visibilitychange",
             () => {
                 if (!document.hidden) onChange(location.href);
             },
-            true,
+            true
         );
     }
 
