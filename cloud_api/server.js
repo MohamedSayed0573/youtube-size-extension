@@ -26,17 +26,41 @@
 
 const express = require("express");
 const cors = require("cors");
-const { exec } = require("child_process");
+const { execFile } = require("child_process");
 const { promisify } = require("util");
+const rateLimit = require("express-rate-limit");
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const API_KEY = process.env.API_KEY || ""; // Set via environment variable
+const REQUIRE_AUTH = process.env.REQUIRE_AUTH === "true"; // Enable auth in production
 
-// Enable CORS for extension requests
-app.use(cors());
-app.use(express.json());
+// Enable CORS with restrictions (configure for production)
+const corsOptions = {
+    origin: process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(",")
+        : "*", // In production, specify extension IDs
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "X-API-Key"],
+};
+app.use(cors(corsOptions));
+app.use(express.json({ limit: "10kb" })); // Limit request body size
+
+// Rate limiting: 20 requests per minute per IP
+const limiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 20,
+    message: {
+        ok: false,
+        error: "Too many requests, please try again later.",
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+app.use("/size", limiter);
 
 // Map of interesting format ids by resolution
 const VIDEO_FORMAT_IDS = {
@@ -48,7 +72,102 @@ const VIDEO_FORMAT_IDS = {
     "1080p": ["399", "299", "303"],
     "1440p": ["400", "308"],
 };
+/**
+ * Middleware to verify API key authentication
+ *
+ * Checks X-API-Key header against configured API_KEY environment variable.
+ * Skips authentication if REQUIRE_AUTH is false (development mode).
+ *
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ * @returns {void}
+ */
+function authenticateApiKey(req, res, next) {
+    // Skip auth if not required (development)
+    if (!REQUIRE_AUTH) {
+        return next();
+    }
+
+    const apiKey = req.headers["x-api-key"];
+
+    if (!apiKey || apiKey !== API_KEY) {
+        return res.status(401).json({
+            ok: false,
+            error: "Unauthorized. Valid API key required.",
+        });
+    }
+
+    next();
+}
+
 const AUDIO_FALLBACK_ID = "251";
+
+/**
+ * Validates that a URL is a legitimate YouTube URL
+ *
+ * Prevents command injection by ensuring only valid YouTube URLs are processed.
+ * Blocks any URL with shell metacharacters or suspicious patterns.
+ *
+ * @param {string} url - The URL to validate
+ * @returns {boolean} True if URL is valid and safe
+ */
+function isValidYouTubeUrl(url) {
+    if (!url || typeof url !== "string") {
+        return false;
+    }
+
+    // Check length (YouTube URLs shouldn't be extremely long)
+    if (url.length > 200) {
+        return false;
+    }
+
+    // Block shell metacharacters and command injection patterns
+    const dangerousPatterns = [
+        /[;&|`$(){}\[\]<>\\]/, // Shell metacharacters
+        /\$\(/, // Command substitution
+        /`/, // Backtick execution
+        /\.\.\//, // Path traversal
+        /file:\/\//, // File protocol
+    ];
+
+    for (const pattern of dangerousPatterns) {
+        if (pattern.test(url)) {
+            return false;
+        }
+    }
+
+    // Validate it's actually a YouTube URL
+    try {
+        const parsedUrl = new URL(url);
+        const validHosts = [
+            "www.youtube.com",
+            "youtube.com",
+            "m.youtube.com",
+            "youtu.be",
+        ];
+
+        if (!validHosts.includes(parsedUrl.hostname)) {
+            return false;
+        }
+
+        // Must use https protocol
+        if (parsedUrl.protocol !== "https:") {
+            return false;
+        }
+
+        // Validate has video ID or is a valid path
+        const hasVideoParam = parsedUrl.searchParams.has("v");
+        const isValidPath =
+            parsedUrl.pathname.startsWith("/watch") ||
+            parsedUrl.pathname.match(/^\/shorts\/[\w-]+$/) ||
+            parsedUrl.hostname === "youtu.be";
+
+        return hasVideoParam || isValidPath;
+    } catch (error) {
+        return false;
+    }
+}
 
 /**
  * Converts bytes to human-readable format using decimal (SI) units
@@ -125,25 +244,24 @@ function sizeFromFormat(fmt, durationSec) {
  * Extracts video metadata from YouTube using yt-dlp
  *
  * Runs yt-dlp with -J flag to get complete metadata in JSON format.
+ * Uses execFile() instead of exec() to prevent command injection.
  * Includes timeout protection and error handling.
  *
- * WARNING: This function executes shell commands. The URL should be
- * validated before calling this function to prevent command injection.
- *
  * @async
- * @param {string} url - The YouTube video URL
+ * @param {string} url - The YouTube video URL (must be validated first)
  * @returns {Promise<Object>} Parsed JSON metadata from yt-dlp
  * @throws {Error} If yt-dlp fails or times out
  */
 async function extractInfo(url) {
     // Use yt-dlp to extract metadata in JSON format
-    const escapedUrl = url.replace(/"/g, '\\"');
-    const cmd = `yt-dlp -J --skip-download "${escapedUrl}"`;
+    // Using execFile instead of exec prevents command injection
+    const args = ["-J", "--skip-download", "--no-playlist", url];
 
     try {
-        const { stdout, stderr } = await execAsync(cmd, {
+        const { stdout, stderr } = await execFileAsync("yt-dlp", args, {
             timeout: 25000,
             maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+            windowsHide: true, // Hide console window on Windows
         });
 
         if (stderr) {
@@ -276,7 +394,7 @@ function computeSizes(meta, durationHint) {
     const hasAny = Object.values(bytesOut).some((v) => v != null);
     if (!hasAny) {
         throw new Error(
-            "No size information could be determined from yt-dlp output",
+            "No size information could be determined from yt-dlp output"
         );
     }
 
@@ -294,14 +412,37 @@ app.get("/", (req, res) => {
 });
 
 // Main size extraction endpoint
-app.post("/size", async (req, res) => {
+app.post("/size", authenticateApiKey, async (req, res) => {
     try {
         const { url, duration_hint } = req.body;
 
+        // Validate URL is provided
         if (!url) {
             return res
                 .status(400)
                 .json({ ok: false, error: "URL is required" });
+        }
+
+        // Validate URL is safe and is a YouTube URL
+        if (!isValidYouTubeUrl(url)) {
+            return res.status(400).json({
+                ok: false,
+                error: "Invalid or unsafe YouTube URL",
+            });
+        }
+
+        // Validate duration_hint if provided
+        if (
+            duration_hint !== undefined &&
+            (typeof duration_hint !== "number" ||
+                !isFinite(duration_hint) ||
+                duration_hint < 0 ||
+                duration_hint > 86400)
+        ) {
+            return res.status(400).json({
+                ok: false,
+                error: "Invalid duration_hint (must be 0-86400 seconds)",
+            });
         }
 
         // Extract metadata using yt-dlp

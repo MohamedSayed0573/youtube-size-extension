@@ -2,7 +2,9 @@
 
 ## Overview
 
-This extension shows the estimated total download sizes for configurable video resolutions (144p to 1080p) when clicked on a YouTube video page. It uses a Native Messaging host that runs `yt-dlp -F <url>` and parses the format list for multiple resolutions:
+This extension shows the estimated total download sizes for configurable video resolutions (144p to
+1080p) when clicked on a YouTube video page. It uses a Native Messaging host that runs
+`yt-dlp -F <url>` and parses the format list for multiple resolutions:
 
 ## How It Works
 
@@ -20,7 +22,8 @@ The extension calculates video sizes by combining video-only and audio-only form
 - Action badge indicates prefetch status
 - Configurable resolution options (144p, 240p, 360p, 480p, 720p, 1080p)
 - Live updates in popup from background cache updates
-- Video formats: 144p (394), 240p (395), 360p (396), 480p (397), 720p (398), 1080p (399) + audio-only (251)
+- Video formats: 144p (394), 240p (395), 360p (396), 480p (397), 720p (398), 1080p (399) +
+  audio-only (251)
 - Video length displayed at the bottom of the popup
 
 ## Requirements
@@ -36,7 +39,8 @@ The extension calculates video sizes by combining video-only and audio-only form
 
 - Deploy the Node.js server from `cloud_api/` folder
 - No local installation required for users
-- See `cloud_api/README_NODE.md` for deployment instructions
+- See [cloud_api/README_NODE.md](cloud_api/README_NODE.md) for deployment instructions
+- See [cloud_api/SECURITY.md](cloud_api/SECURITY.md) for security configuration
 
 ## Setup
 
@@ -53,7 +57,8 @@ The extension calculates video sizes by combining video-only and audio-only form
         ```bash
         ./native_host/install_host.sh <CHROME_EXTENSION_ID>
         ```
-    - The script installs for both Chrome and Chromium and also installs a Firefox manifest under `~/.mozilla/native-messaging-hosts/`.
+    - The script installs for both Chrome and Chromium and also installs a Firefox manifest under
+      `~/.mozilla/native-messaging-hosts/`.
 
 ### Chrome or Edge on Windows
 
@@ -62,10 +67,13 @@ The extension calculates video sizes by combining video-only and audio-only form
     - Edge: `edge://extensions` → Developer mode → Load unpacked → select this folder.
 
 2. Install the native host
-    - Ensure the path in `native_host/com.ytdlp.sizer.json` has `allowed_origins` for your actual Chrome/Edge extension ID. Edit the file if needed after loading the extension and noting the ID.
+    - Ensure the path in `native_host/com.ytdlp.sizer.json` has `allowed_origins` for your actual
+      Chrome/Edge extension ID. Edit the file if needed after loading the extension and noting the
+      ID.
     - Double-click `native_host/install_host.reg` to add the Native Messaging registry keys.
 
-Note: On Windows the registry entries point to the JSON files in `d:\extention\native_host\`. If you place the project elsewhere, update the `.reg` file accordingly before applying.
+Note: On Windows the registry entries point to the JSON files in `d:\extention\native_host\`. If you
+place the project elsewhere, update the `.reg` file accordingly before applying.
 
 ### Firefox on Windows
 
@@ -76,13 +84,16 @@ Note: On Windows the registry entries point to the JSON files in `d:\extention\n
         - `browser_specific_settings.gecko.id = ytdlp-sizer@example.com`
 
 2. Install the native host
-    - Double-click `native_host/install_host.reg` (it adds the key `HKEY_CURRENT_USER\Software\Mozilla\NativeMessagingHosts\com.ytdlp.sizer`).
-    - The Firefox-specific manifest is `native_host/com.ytdlp.sizer.firefox.json` and uses `allowed_extensions: ["ytdlp-sizer@example.com"]`.
+    - Double-click `native_host/install_host.reg` (it adds the key
+      `HKEY_CURRENT_USER\Software\Mozilla\NativeMessagingHosts\com.ytdlp.sizer`).
+    - The Firefox-specific manifest is `native_host/com.ytdlp.sizer.firefox.json` and uses
+      `allowed_extensions: ["ytdlp-sizer@example.com"]`.
 
 ### Firefox on Linux
 
 1. Load the extension temporarily
-    - Open `about:debugging#/runtime/this-firefox` → Load Temporary Add-on… → select `manifest.json`.
+    - Open `about:debugging#/runtime/this-firefox` → Load Temporary Add-on… → select
+      `manifest.json`.
 
 2. Install the native host
     - The same installer script also installs the Firefox manifest:
@@ -94,24 +105,31 @@ Note: On Windows the registry entries point to the JSON files in `d:\extention\n
 ### Verify and use
 
 - Navigate to a YouTube video page and click the extension icon.
-- The popup shows sizes for your configured resolutions; it auto-refreshes when the background prefetch completes.
+- The popup shows sizes for your configured resolutions; it auto-refreshes when the background
+  prefetch completes.
 - The action badge indicates prefetch status.
 
 ## Troubleshooting
 
 - "Failed to connect to native host":
-    - Linux/Chrome: ensure you ran `native_host/install_host.sh <CHROME_ID>` with the correct ID, then restart the browser.
-    - Windows/Chrome: ensure `native_host/com.ytdlp.sizer.json` contains your actual extension ID under `allowed_origins`.
+    - Linux/Chrome: ensure you ran `native_host/install_host.sh <CHROME_ID>` with the correct ID,
+      then restart the browser.
+    - Windows/Chrome: ensure `native_host/com.ytdlp.sizer.json` contains your actual extension ID
+      under `allowed_origins`.
     - Firefox/Linux: verify `~/.mozilla/native-messaging-hosts/com.ytdlp.sizer.json` exists.
-    - Firefox/Windows: verify the registry key exists at `HKEY_CURRENT_USER\Software\Mozilla\NativeMessagingHosts\com.ytdlp.sizer` and points to the Firefox JSON.
+    - Firefox/Windows: verify the registry key exists at
+      `HKEY_CURRENT_USER\Software\Mozilla\NativeMessagingHosts\com.ytdlp.sizer` and points to the
+      Firefox JSON.
 
 - "yt-dlp not found":
     - Install `yt-dlp` and make sure it is in PATH.
 
 - Missing sizes / N/A:
-    - Some formats may not have a listed size in `yt-dlp -F` output. The popup will show `N/A` if 397/398 or 251 is missing.
+    - Some formats may not have a listed size in `yt-dlp -F` output. The popup will show `N/A` if
+      397/398 or 251 is missing.
 
 ## Security Notes
 
 - The native host accepts only a URL string and returns computed sizes.
-- The extension requires `nativeMessaging` permission to talk to the host, and `activeTab`/`tabs` to read the current tab URL.
+- The extension requires `nativeMessaging` permission to talk to the host, and `activeTab`/`tabs` to
+  read the current tab URL.
