@@ -263,6 +263,20 @@ class WorkerPool extends EventEmitter {
             return Promise.reject(new Error("Worker pool is shutting down"));
         }
 
+        // Backpressure check BEFORE incrementing stats to avoid counting rejected tasks
+        const availableWorker = this._getAvailableWorker();
+        if (!availableWorker && this.taskQueue.length >= this.maxQueueSize) {
+            const error = new Error(
+                `Task queue full (${this.maxQueueSize} pending). Try again later.`
+            );
+            error.code = "QUEUE_FULL";
+            this.emit("queueFull", {
+                queueLength: this.taskQueue.length,
+                maxQueueSize: this.maxQueueSize,
+            });
+            return Promise.reject(error);
+        }
+
         this.stats.totalTasks++;
 
         return new Promise((resolve, reject) => {
@@ -274,25 +288,10 @@ class WorkerPool extends EventEmitter {
             };
 
             // Try to execute immediately if worker available
-            const availableWorker = this._getAvailableWorker();
             if (availableWorker) {
                 this._executeTask(availableWorker, taskInfo);
             } else {
-                // Backpressure: reject if queue is full
-                if (this.taskQueue.length >= this.maxQueueSize) {
-                    const error = new Error(
-                        `Task queue full (${this.maxQueueSize} pending). Try again later.`
-                    );
-                    error.code = "QUEUE_FULL";
-                    this.emit("queueFull", {
-                        queueLength: this.taskQueue.length,
-                        maxQueueSize: this.maxQueueSize,
-                    });
-                    reject(error);
-                    return;
-                }
-
-                // Queue task
+                // Queue task (we already checked queue size above)
                 this.taskQueue.push(taskInfo);
                 this.stats.queuedTasks = this.taskQueue.length;
                 this.emit("taskQueued", {
