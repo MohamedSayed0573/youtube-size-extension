@@ -74,34 +74,59 @@ async function executeYtdlp(url, timeout, maxBuffer, retryAttempt) {
     } catch (error) {
         // Classify error types for circuit breaker
         let errorCode = "UNKNOWN";
-        let errorMessage = error.message;
+        let errorMessage = error.message || "Unknown error occurred";
+
+        // Safely access error properties with fallbacks
+        const stderr = typeof error.stderr === "string" ? error.stderr : "";
+        const errorCodeFromError = error.code || null;
 
         if (error.killed || error.signal === "SIGTERM") {
             errorCode = "TIMEOUT";
             errorMessage = "yt-dlp timed out";
-        } else if (error.code === "ENOENT") {
+        } else if (errorCodeFromError === "ENOENT") {
             errorCode = "NOT_FOUND";
             errorMessage = "yt-dlp executable not found";
-        } else if (error.stderr && error.stderr.includes("Video unavailable")) {
+        } else if (errorCodeFromError === "ECONNREFUSED") {
+            errorCode = "NETWORK_ERROR";
+            errorMessage = "Connection refused";
+        } else if (errorCodeFromError === "ECONNRESET") {
+            errorCode = "NETWORK_ERROR";
+            errorMessage = "Connection reset";
+        } else if (errorCodeFromError === "ETIMEDOUT") {
+            errorCode = "TIMEOUT";
+            errorMessage = "Connection timed out";
+        } else if (stderr.includes("Video unavailable")) {
             errorCode = "VIDEO_UNAVAILABLE";
             errorMessage = "Video is unavailable or private";
+        } else if (stderr.includes("Private video")) {
+            errorCode = "VIDEO_UNAVAILABLE";
+            errorMessage = "Video is private";
+        } else if (stderr.includes("This video is not available")) {
+            errorCode = "VIDEO_UNAVAILABLE";
+            errorMessage = "Video is not available in your region";
         } else if (
-            error.stderr &&
-            (error.stderr.includes("HTTP Error 429") ||
-                error.stderr.includes("Too Many Requests"))
+            stderr.includes("HTTP Error 429") ||
+            stderr.includes("Too Many Requests")
         ) {
             errorCode = "RATE_LIMITED";
             errorMessage = "YouTube rate limit exceeded";
-        } else if (error.stderr && error.stderr.includes("network")) {
+        } else if (
+            stderr.includes("network") ||
+            stderr.includes("Unable to download") ||
+            stderr.includes("Connection")
+        ) {
             errorCode = "NETWORK_ERROR";
             errorMessage = "Network error occurred";
+        } else if (stderr.includes("Sign in to confirm your age")) {
+            errorCode = "VIDEO_UNAVAILABLE";
+            errorMessage = "Video requires age verification";
         }
 
         return {
             success: false,
             error: errorMessage,
             code: errorCode,
-            stderr: error.stderr,
+            stderr: stderr || undefined,
         };
     }
 }
