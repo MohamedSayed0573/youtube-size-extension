@@ -52,6 +52,7 @@ async function executeYtdlp(url, timeout, maxBuffer, retryAttempt) {
             "--no-playlist",
             "--js-runtimes",
             "node",
+            "--",
             url,
         ];
 

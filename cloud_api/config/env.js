@@ -23,7 +23,7 @@ const envSchema = z
         // CORS
         ALLOWED_ORIGINS: z
             .string()
-            .default("*")
+            .default("")
             .transform((val) => (val === "*" ? "*" : val.split(","))),
 
         // Redis

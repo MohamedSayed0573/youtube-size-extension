@@ -39,6 +39,15 @@ const lastFetchMs = new Map(); // videoId -> last fetch timestamp
 const durationHints = new Map(); // videoId -> { d: seconds, ts: epoch_ms }
 
 /**
+ * Simple helper to delay execution
+ * @param {number} ms - Milliseconds to delay
+ * @returns {Promise<void>}
+ */
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Calls the cloud API to fetch video size information
  *
  * This is an alternative to the native messaging host, allowing users to deploy
@@ -505,36 +514,42 @@ function storageRemove(keys) {
 
 // Prefer session storage for volatile video size caches (faster, no disk I/O),
 // fall back to local storage if session is unavailable.
-const cacheArea =
-    chrome && chrome.storage && chrome.storage.session
+// Prefer session storage for volatile video size caches (faster, no disk I/O),
+// fall back to local storage if session is unavailable.
+/**
+ *
+ */
+function getCacheArea() {
+    return chrome && chrome.storage && chrome.storage.session
         ? chrome.storage.session
         : chrome.storage.local;
+}
 /**
  *
  * @param keys
  */
 function cacheGet(keys) {
-    return new Promise((resolve) => cacheArea.get(keys, resolve));
+    return new Promise((resolve) => getCacheArea().get(keys, resolve));
 }
 /**
  *
  * @param items
  */
 function cacheSet(items) {
-    return new Promise((resolve) => cacheArea.set(items, resolve));
+    return new Promise((resolve) => getCacheArea().set(items, resolve));
 }
 /**
  *
  * @param keys
  */
 function cacheRemove(keys) {
-    return new Promise((resolve) => cacheArea.remove(keys, resolve));
+    return new Promise((resolve) => getCacheArea().remove(keys, resolve));
 }
 /**
  *
  */
 function cacheGetAll() {
-    return new Promise((resolve) => cacheArea.get(null, resolve));
+    return new Promise((resolve) => getCacheArea().get(null, resolve));
 }
 
 // Single storage write - use primary cache area only to avoid race conditions
@@ -622,6 +637,7 @@ async function prefetchForUrl(url, tabId, forced = false) {
         } catch (e1) {
             // Fallback to the other path
             try {
+                await delay(1000); // Simple backoff before fallback
                 msg = tryCloudFirst
                     ? await callNativeHost(url, durationHint)
                     : await callCloudApi(url, durationHint);
@@ -929,36 +945,46 @@ try {
             const rateLimited = !forced && now - last < 10000;
             // We may need async to check freshness
             (async () => {
-                const fresh = !forced && (await isFreshInCache(videoId));
-                if (fresh) {
-                    try {
-                        sendResponse({ ok: true, reason: "fresh" });
-                    } catch (e) {
-                        Logger.warn("Failed to send fresh response", e);
-                    }
-                    return;
-                }
-                if (inFlight.has(videoId)) {
-                    try {
-                        sendResponse({ ok: true, reason: "in_flight" });
-                    } catch (e) {
-                        Logger.warn("Failed to send in_flight response", e);
-                    }
-                    return;
-                }
-                if (rateLimited) {
-                    try {
-                        sendResponse({ ok: true, reason: "rate_limited" });
-                    } catch (e) {
-                        Logger.warn("Failed to send rate_limited response", e);
-                    }
-                    return;
-                }
-                prefetchForUrl(url, tabId, forced);
                 try {
-                    sendResponse({ ok: true, reason: "started" });
+                    const fresh = !forced && (await isFreshInCache(videoId));
+                    if (fresh) {
+                        try {
+                            sendResponse({ ok: true, reason: "fresh" });
+                        } catch (e) {
+                            Logger.warn("Failed to send fresh response", e);
+                        }
+                        return;
+                    }
+                    if (inFlight.has(videoId)) {
+                        try {
+                            sendResponse({ ok: true, reason: "in_flight" });
+                        } catch (e) {
+                            Logger.warn("Failed to send in_flight response", e);
+                        }
+                        return;
+                    }
+                    if (rateLimited) {
+                        try {
+                            sendResponse({ ok: true, reason: "rate_limited" });
+                        } catch (e) {
+                            Logger.warn(
+                                "Failed to send rate_limited response",
+                                e
+                            );
+                        }
+                        return;
+                    }
+                    prefetchForUrl(url, tabId, forced);
+                    try {
+                        sendResponse({ ok: true, reason: "started" });
+                    } catch (e) {
+                        Logger.warn("Failed to send started response", e);
+                    }
                 } catch (e) {
-                    Logger.warn("Failed to send started response", e);
+                    Logger.warn("Async message handler failed", e);
+                    try {
+                        sendResponse({ ok: false, error: e.message });
+                    } catch (ignore) {}
                 }
             })();
             return true; // keep the message channel alive for async freshness check

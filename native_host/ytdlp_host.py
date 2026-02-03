@@ -39,6 +39,41 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 
+def is_valid_youtube_url(url: str) -> bool:
+    """Validate that a URL is a legitimate YouTube URL.
+    
+    Prevents command injection by ensuring only valid YouTube URLs are processed.
+    Matches logic in utils.js and ytdlp.js.
+    """
+    try:
+        if not url:
+            return False
+        if len(url) > 200:
+            return False
+        
+        # Block shell metacharacters and command injection patterns
+        dangerous_patterns = [
+            r'[;&|`$(){}[\]<>\\]', # Shell metacharacters
+            r'\$\(',               # Command substitution
+            r'`',                  # Backtick execution
+            r'\.\./',              # Path traversal
+            r'file://',            # File protocol
+        ]
+        
+        for pattern in dangerous_patterns:
+            if re.search(pattern, url):
+                return False
+
+        # Validate it's actually a YouTube URL
+        # Regex adapted from utils.js/ytdlp.js logic
+        # Matches https://(www.|m.)?youtube.com/watch?v=... or https://youtu.be/... or https://youtube.com/shorts/...
+        youtube_regex = re.compile(r'^https://(?:www\.|m\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)([\w-]{11})', re.IGNORECASE)
+        match = youtube_regex.match(url)
+        return bool(match)
+    except Exception:
+        return False
+
+
 def _dbg(msg: str):
     """Write debug message to stderr.
     
@@ -239,10 +274,14 @@ def run_ytdlp_dump_json(url: str, timeout_sec: int = 25):
         if code == 0 and meta:
             duration = meta.get('duration')
     """
+    if not is_valid_youtube_url(url):
+         return None, "Invalid or unsafe YouTube URL", 1
+
     try:
         yt = find_yt_dlp()
+        # use -- to prevent flag injection
         proc = subprocess.run(
-            [yt, "-J", "-s", "--no-playlist", url],
+            [yt, "-J", "-s", "--no-playlist", "--", url],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -591,8 +630,9 @@ def compute_sizes_from_json_all(meta: dict, duration_hint: Optional[int] = None)
 def run_ytdlp_list_formats(url: str, timeout_sec: int = 25):
     try:
         yt = find_yt_dlp()
+        # use -- to prevent flag injection
         proc = subprocess.run(
-            [yt, "-F", "--no-playlist", url],
+            [yt, "-F", "--no-playlist", "--", url],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -614,8 +654,9 @@ def run_ytdlp_get_duration(url: str, timeout_sec: int = 20):
     # Use --print to directly output the duration in seconds if available
     try:
         yt = find_yt_dlp()
+        # use -- to prevent flag injection
         proc = subprocess.run(
-            [yt, "--print", "%(duration)s", "-s", "--no-playlist", url],
+            [yt, "--print", "%(duration)s", "-s", "--no-playlist", "--", url],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

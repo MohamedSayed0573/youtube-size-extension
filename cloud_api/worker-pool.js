@@ -172,7 +172,16 @@ class WorkerPool extends EventEmitter {
         if (this.isShuttingDown) return null;
 
         const workerId = this.nextWorkerId++;
-        const worker = new Worker(this.workerScript);
+        let worker;
+        try {
+            worker = new Worker(this.workerScript);
+        } catch (error) {
+            this.emit("workerError", {
+                workerId,
+                error: `Failed to create worker: ${error.message}`,
+            });
+            return null;
+        }
 
         const workerInfo = {
             id: workerId,

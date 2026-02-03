@@ -18,8 +18,9 @@ function requestIdMiddleware(logger) {
             req.headers["x-correlation-id"] ||
             `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        req.requestId = requestId;
-        res.setHeader("X-Request-ID", requestId);
+        // Sanitize Request ID to prevent log injection
+        req.requestId = requestId.replace(/[^a-zA-Z0-9_-]/gu, "");
+        res.setHeader("X-Request-ID", req.requestId);
 
         // Add to logger context
         req.log = logger.child({ requestId });

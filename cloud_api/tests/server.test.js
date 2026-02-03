@@ -16,6 +16,55 @@ process.env.ALLOWED_ORIGINS = "*";
 process.env.RATE_LIMIT_WINDOW_MS = "60000";
 process.env.RATE_LIMIT_MAX_REQUESTS = "100"; // High limit for tests
 
+// Mock WorkerPool to prevent spawning real threads/processes
+jest.mock("../worker-pool.js", () => {
+    return class MockWorkerPool {
+        constructor() {
+            this.stats = {};
+            this.handlers = {};
+        }
+        async execute(task) {
+            // Return meaningful dummy data for tests
+            return {
+                id: "dQw4w9WgXcQ",
+                duration: 212,
+                formats: [
+                    { format_id: "18", ext: "mp4", filesize: 1024 * 1024 },
+                    { format_id: "22", ext: "mp4", filesize: 5 * 1024 * 1024 },
+                ],
+            };
+        }
+        async shutdown() {}
+        getStats() {
+            return { activeWorkers: 0 };
+        }
+        on(event, handler) {
+            // Stub event listener
+            this.handlers[event] = handler;
+        }
+        async warmUp() {
+            return { warmed: 0, total: 0 };
+        }
+    };
+});
+
+// Mock CircuitBreaker to ensure happy path
+jest.mock("../circuit-breaker.js", () => {
+    return {
+        CircuitBreaker: class MockCircuitBreaker {
+            constructor() {}
+            async execute(fn) {
+                return fn(); // Pass through
+            }
+            getStatus() {
+                return { state: "CLOSED" };
+            }
+            reset() {}
+            on(event, handler) {}
+        },
+    };
+});
+
 // Import app after setting environment
 const app = require("../server.js");
 
@@ -166,7 +215,7 @@ describe("Cloud API Server", () => {
                 expect(response.body).toHaveProperty("ok", false);
             });
 
-            test.skip("should accept valid YouTube watch URL", async () => {
+            test("should accept valid YouTube watch URL", async () => {
                 // Skipped: Makes real yt-dlp call (takes 8+ seconds)
                 const response = await request(app)
                     .post("/api/v1/size")
@@ -177,7 +226,7 @@ describe("Cloud API Server", () => {
                 expect(response.status).not.toBe(400);
             }, 15000);
 
-            test.skip("should accept valid youtu.be URL", async () => {
+            test("should accept valid youtu.be URL", async () => {
                 // Skipped: Takes too long with real yt-dlp calls (>15s)
                 const response = await request(app)
                     .post("/api/v1/size")
@@ -186,7 +235,7 @@ describe("Cloud API Server", () => {
                 expect(response.status).not.toBe(400);
             }, 15000);
 
-            test.skip("should accept valid YouTube shorts URL", async () => {
+            test("should accept valid YouTube shorts URL", async () => {
                 // Skipped: Takes too long with real yt-dlp calls (>15s)
                 const response = await request(app)
                     .post("/api/v1/size")
