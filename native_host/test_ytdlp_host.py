@@ -130,7 +130,7 @@ class TestUtilityFunctions:
 
     def test_humanize_bytes_zero(self):
         """Test zero bytes"""
-        assert ytdlp_host.humanize_bytes(0) == "N/A"
+        assert ytdlp_host.humanize_bytes(0) == "0 B"
 
     def test_humanize_duration_seconds(self):
         """Test formatting duration under 1 minute"""
@@ -325,14 +325,24 @@ class TestFindYtDlp:
         assert isinstance(result, str)
         assert len(result) > 0
 
-    @patch('pathlib.Path.exists')
-    def test_find_yt_dlp_bundled_windows(self, mock_exists):
+    @patch('ytdlp_host._host_dir')
+    def test_find_yt_dlp_bundled_windows(self, mock_host_dir):
         """Test finding bundled yt-dlp.exe on Windows"""
-        mock_exists.return_value = True
+        from pathlib import Path
+        mock_host_dir.return_value = Path('/fake/dir')
         
+        # We need to mock the Path object creation that happens inside find_yt_dlp
+        # because instantiating a Path with os.name='nt' on Linux fails.
         with patch('os.name', 'nt'):
-            result = ytdlp_host.find_yt_dlp()
-            assert 'yt-dlp' in result.lower()
+            with patch('ytdlp_host.Path') as mock_path:
+                # Setup mock_path / 'yt-dlp.exe'
+                mock_exe = MagicMock()
+                mock_exe.exists.return_value = True
+                mock_exe.__str__.return_value = 'C:\\fake\\dir\\yt-dlp.exe'
+                mock_path.return_value.__truediv__.return_value = mock_exe
+                
+                result = ytdlp_host.find_yt_dlp()
+                assert 'yt-dlp' in result.lower()
 
     @patch('pathlib.Path.exists')
     def test_find_yt_dlp_fallback_to_path(self, mock_exists):

@@ -296,6 +296,8 @@ def _filesize_from_fmt(fmt: dict, duration_sec: Optional[int]):
     Returns:
         int: Estimated size in bytes, or None if unable to determine
     """
+    if fmt is None:
+        return None
     # Prefer exact filesize, then approx; else estimate from tbr/vbr/abr and duration
     for k in ("filesize", "filesize_approx"):
         v = fmt.get(k)
