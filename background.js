@@ -14,7 +14,7 @@
  * @version 0.2.0
  */
 
-/* global isYouTubeUrl, extractVideoId, humanizeBytes, humanizeDuration */
+/* global isYouTubeUrl, extractVideoId, humanizeBytes, humanizeDuration, Logger */
 /* eslint-disable no-inner-declarations */
 
 // Import shared utilities
@@ -62,7 +62,9 @@ async function callCloudApi(url, durationHint) {
     const id = setTimeout(() => {
         try {
             ac.abort();
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("Abort failed", e);
+        }
     }, 25000);
     try {
         const body = { url };
@@ -83,7 +85,9 @@ async function callCloudApi(url, durationHint) {
         let json = null;
         try {
             json = JSON.parse(text);
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("Cloud API invalid JSON", e);
+        }
         if (!res.ok || !json) {
             throw new Error(
                 (json && json.error) || `Cloud API HTTP ${res.status}`
@@ -94,7 +98,9 @@ async function callCloudApi(url, durationHint) {
     } finally {
         try {
             clearTimeout(id);
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("ClearTimeout failed", e);
+        }
     }
 }
 /** @constant {number} Time-to-live for duration hints in milliseconds (1 hour) */
@@ -238,7 +244,9 @@ function startBadgeSpinner(tabId) {
     stopBadgeSpinner(tabId);
     try {
         chrome.action.setBadgeBackgroundColor({ tabId, color: "#4a90e2" });
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("Failed to set badge color", e);
+    }
     const frames = [".", "..", "..."];
     let i = 0;
     const id = setInterval(() => {
@@ -247,7 +255,9 @@ function startBadgeSpinner(tabId) {
                 tabId,
                 text: frames[i % frames.length],
             });
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("Failed to update badge text", e);
+        }
         i++;
     }, 300);
     tabBadgeTimers.set(tabId, id);
@@ -262,7 +272,9 @@ function stopBadgeSpinner(tabId) {
     if (!tabBadgeTimers.has(tabId)) return;
     try {
         clearInterval(tabBadgeTimers.get(tabId));
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("Failed to clear interval", e);
+    }
     tabBadgeTimers.delete(tabId);
 }
 
@@ -283,7 +295,9 @@ function setBadgeCheck(tabId) {
         chrome.action.setBadgeText({ tabId, text: "✓" });
         chrome.action.setBadgeBackgroundColor({ tabId, color: "#27ae60" });
         chrome.action.setTitle({ tabId, title: "YouTube Size cached" });
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("Failed to set success badge", e);
+    }
 }
 
 /**
@@ -296,7 +310,9 @@ function clearBadge(tabId) {
     }
     try {
         chrome.action.setBadgeText({ tabId, text: "" });
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("Failed to clear badge", e);
+    }
 }
 
 /**
@@ -321,7 +337,9 @@ async function ensureBadgeForTab(url, tabId) {
         } else {
             clearBadge(tabId);
         }
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("Failed to check cache for badge", e);
+    }
 }
 
 // Settings with defaults
@@ -364,10 +382,11 @@ async function loadSettings() {
                     settings = { ...settings, ...cfg };
                 }
             }
-        } catch (_) {
-            /* ignore if missing */
+        } catch (e) {
+            Logger.info("Optional config.json not found or invalid", e);
         }
-    } catch (_) {
+    } catch (e) {
+        Logger.error("Failed to load settings", e);
         settings = { ...defaultSettings };
     }
 }
@@ -379,10 +398,14 @@ try {
             try {
                 const nv = changes.ytSize_settings.newValue || {};
                 settings = { ...defaultSettings, ...nv };
-            } catch (_) {}
+            } catch (e) {
+                Logger.warn("Failed to update settings", e);
+            }
         }
     });
-} catch (_) {}
+} catch (e) {
+    Logger.warn("Failed to add storage listener", e);
+}
 
 // Shared utility functions (isYouTubeUrl, extractVideoId) are imported from utils.js
 
@@ -480,7 +503,8 @@ function cacheHasAnySize(cached) {
             return true;
         }
         return false;
-    } catch (_) {
+    } catch (e) {
+        Logger.warn("cacheHasAnySize check failed", e);
         return false;
     }
 }
@@ -525,7 +549,9 @@ function callNativeHost(url, durationHint) {
             } finally {
                 try {
                     port.disconnect();
-                } catch (_) {}
+                } catch (e) {
+                    Logger.warn("Failed to disconnect port", e);
+                }
             }
         });
 

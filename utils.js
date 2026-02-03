@@ -8,7 +8,44 @@
  * @file Shared utilities to eliminate code duplication
  * @module utils
  */
+/**
+ * Simple logger wrapper that only logs in development mode
+ *
+ * Detects development mode by checking for missing update_url in manifest
+ * (typical for unpacked extensions) or if explicitly enabled.
+ */
+const Logger = {
+    _isDev: null,
 
+    /**
+     * Check if we are in development mode
+     * @returns {boolean} True if dev mode
+     */
+    isDev() {
+        if (this._isDev !== null) return this._isDev;
+        try {
+            // Unpacked extensions usually don't have an update_url
+            const manifest = chrome.runtime.getManifest();
+            this._isDev = !manifest.update_url;
+        } catch (_) {
+            // Fallback for non-ext environments (tests)
+            this._isDev = false;
+        }
+        return this._isDev;
+    },
+
+    info(...args) {
+        if (this.isDev()) console.log("[ytSize]", ...args);
+    },
+
+    warn(...args) {
+        if (this.isDev()) console.warn("[ytSize]", ...args);
+    },
+
+    error(...args) {
+        if (this.isDev()) console.error("[ytSize]", ...args);
+    },
+};
 /**
  * Validates if a URL is a legitimate YouTube URL
  *
@@ -129,5 +166,6 @@ if (typeof module !== "undefined" && module.exports) {
         extractVideoId,
         humanizeBytes,
         humanizeDuration,
+        Logger,
     };
 }
