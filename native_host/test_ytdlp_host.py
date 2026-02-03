@@ -169,7 +169,7 @@ class TestYtDlpIntegration:
         mock_result.stderr = ""
         mock_run.return_value = mock_result
 
-        meta, err, code = ytdlp_host.run_ytdlp_dump_json("https://youtube.com/watch?v=test")
+        meta, err, code = ytdlp_host.run_ytdlp_dump_json("https://youtube.com/watch?v=dQw4w9WgXcQ")
 
         assert code == 0
         assert err is None
@@ -181,7 +181,7 @@ class TestYtDlpIntegration:
         """Test yt-dlp not found error"""
         mock_run.side_effect = FileNotFoundError()
 
-        meta, err, code = ytdlp_host.run_ytdlp_dump_json("https://youtube.com/watch?v=test")
+        meta, err, code = ytdlp_host.run_ytdlp_dump_json("https://youtube.com/watch?v=dQw4w9WgXcQ")
 
         assert code == 127
         assert "not found" in err.lower()
@@ -192,7 +192,7 @@ class TestYtDlpIntegration:
         """Test yt-dlp timeout handling"""
         mock_run.side_effect = subprocess.TimeoutExpired("yt-dlp", 25)
 
-        meta, err, code = ytdlp_host.run_ytdlp_dump_json("https://youtube.com/watch?v=test")
+        meta, err, code = ytdlp_host.run_ytdlp_dump_json("https://youtube.com/watch?v=dQw4w9WgXcQ")
 
         assert code == 124
         assert "timed out" in err.lower()
@@ -207,7 +207,7 @@ class TestYtDlpIntegration:
         mock_result.stderr = "ERROR: Video unavailable"
         mock_run.return_value = mock_result
 
-        meta, err, code = ytdlp_host.run_ytdlp_dump_json("https://youtube.com/watch?v=test")
+        meta, err, code = ytdlp_host.run_ytdlp_dump_json("https://youtube.com/watch?v=dQw4w9WgXcQ")
 
         assert code == 1
         assert "Video unavailable" in err
@@ -222,7 +222,7 @@ class TestYtDlpIntegration:
         mock_result.stderr = ""
         mock_run.return_value = mock_result
 
-        meta, err, code = ytdlp_host.run_ytdlp_dump_json("https://youtube.com/watch?v=test")
+        meta, err, code = ytdlp_host.run_ytdlp_dump_json("https://youtube.com/watch?v=dQw4w9WgXcQ")
 
         assert code == 1
         assert "parse" in err.lower()
