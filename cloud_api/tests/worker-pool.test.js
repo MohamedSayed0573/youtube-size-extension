@@ -209,6 +209,12 @@ describe("Integration Tests", () => {
         app = require("../server");
     });
 
+    afterAll(async () => {
+        if (app.workerPool) {
+            await app.workerPool.shutdown();
+        }
+    });
+
     // Reset circuit breaker before each test
     beforeEach(() => {
         if (app.circuitBreaker) {

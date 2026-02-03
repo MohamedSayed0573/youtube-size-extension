@@ -56,6 +56,12 @@ const app = require("../server.js");
 jest.setTimeout(60000);
 
 describe("Integration Tests", () => {
+    afterAll(async () => {
+        if (app.workerPool) {
+            await app.workerPool.shutdown();
+        }
+    });
+
     // Reset circuit breaker before each test to ensure isolation
     beforeEach(() => {
         if (app.circuitBreaker) {
