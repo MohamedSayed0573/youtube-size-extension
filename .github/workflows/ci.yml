@@ -210,6 +210,8 @@ jobs:
               run: |
                   if [ "${{ needs.lint-and-format.result }}" != "success" ] || \
                      [ "${{ needs.test-cloud-api.result }}" != "success" ] || \
+                     [ "${{ needs.test-native-host.result }}" != "success" ] || \
+                     [ "${{ needs.security-scan.result }}" != "success" ] || \
                      [ "${{ needs.build-docker.result }}" != "success" ] || \
                      [ "${{ needs.validate-extension.result }}" != "success" ]; then
                     echo "❌ Some checks failed"
