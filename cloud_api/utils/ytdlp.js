@@ -269,6 +269,7 @@ async function extractInfo(
 
 /**
  * Computes video sizes for all resolutions from yt-dlp metadata
+ * Uses single-pass iteration for efficiency
  * @param {Object} meta - The complete metadata object from yt-dlp
  * @param {number} [durationHint] - Optional duration hint in seconds
  * @returns {Object} Result object with ok, bytes, human, and duration fields
@@ -291,17 +292,35 @@ function computeSizes(meta, durationHint) {
         durationSec = Math.round(durationHint);
     }
 
-    // Build index of formats by itag/id
-    const byId = {};
+    // Build a set of all format IDs we care about (single iteration to build index)
+    const targetFormatIds = new Set();
+    for (const ids of Object.values(VIDEO_FORMAT_IDS)) {
+        for (const id of ids) {
+            targetFormatIds.add(id);
+        }
+    }
+    // Add specific codec variants
+    targetFormatIds.add("299"); // 1080p H.264
+    targetFormatIds.add("303"); // 1080p VP9
+    targetFormatIds.add("399"); // 1080p AV1
+    targetFormatIds.add("308"); // 1440p VP9
+    targetFormatIds.add("400"); // 1440p AV1
+    targetFormatIds.add(AUDIO_FALLBACK_ID);
+
+    // Single pass: build format size map for only the IDs we care about
+    const formatSizes = new Map();
     for (const f of formats) {
         const fid = f.format_id != null ? String(f.format_id) : null;
-        if (fid) {
-            byId[fid] = f;
+        if (fid && targetFormatIds.has(fid)) {
+            const size = sizeFromFormat(f, durationSec);
+            if (size) {
+                formatSizes.set(fid, size);
+            }
         }
     }
 
-    // Audio size
-    const audioSize = sizeFromFormat(byId[AUDIO_FALLBACK_ID], durationSec);
+    // Audio size (already computed in single pass)
+    const audioSize = formatSizes.get(AUDIO_FALLBACK_ID) || null;
 
     // Initialize output
     const bytesOut = {
@@ -319,47 +338,35 @@ function computeSizes(meta, durationHint) {
         s1440p_400: null,
     };
 
-    // For each resolution, pick a candidate video id and compute combined size with audio
+    // For each resolution, pick a candidate video id (use pre-computed sizes)
     for (const [label, ids] of Object.entries(VIDEO_FORMAT_IDS)) {
         let vidSize = null;
-        let chosenId = null;
 
         for (const fid of ids) {
-            const sz = sizeFromFormat(byId[fid], durationSec);
+            const sz = formatSizes.get(fid);
             if (sz) {
                 vidSize = sz;
-                chosenId = fid;
                 break;
             }
         }
 
-        if (chosenId && vidSize) {
+        if (vidSize) {
             const key = `s${label}`;
-            bytesOut[key] =
-                audioSize && label.includes("p")
-                    ? vidSize + audioSize
-                    : vidSize;
+            bytesOut[key] = audioSize ? vidSize + audioSize : vidSize;
+        }
+    }
 
-            // Expose specific combos for 1080p and 1440p
-            if (label === "1080p") {
-                for (const fid of ["299", "303", "399"]) {
-                    const sz = sizeFromFormat(byId[fid], durationSec);
-                    if (sz) {
-                        bytesOut[`s1080p_${fid}`] = audioSize
-                            ? sz + audioSize
-                            : sz;
-                    }
-                }
-            }
-            if (label === "1440p") {
-                for (const fid of ["308", "400"]) {
-                    const sz = sizeFromFormat(byId[fid], durationSec);
-                    if (sz) {
-                        bytesOut[`s1440p_${fid}`] = audioSize
-                            ? sz + audioSize
-                            : sz;
-                    }
-                }
+    // Expose specific codec variants for 1080p and 1440p (use pre-computed sizes)
+    const codecVariants = [
+        ["1080p", ["299", "303", "399"]],
+        ["1440p", ["308", "400"]],
+    ];
+
+    for (const [res, fids] of codecVariants) {
+        for (const fid of fids) {
+            const sz = formatSizes.get(fid);
+            if (sz) {
+                bytesOut[`s${res}_${fid}`] = audioSize ? sz + audioSize : sz;
             }
         }
     }
