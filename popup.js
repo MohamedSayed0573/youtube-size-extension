@@ -1,4 +1,4 @@
-/* global humanizeBytes, humanizeDuration, extractVideoId, isYouTubeUrl */
+/* global humanizeBytes, humanizeDuration, extractVideoId, isYouTubeUrl, Logger, getCacheKey, cacheHasAnySize, callNativeHost */
 
 (async () => {
     const statusEl = document.getElementById("status");
@@ -46,11 +46,13 @@
                 } else {
                     window.open("options.html", "_blank");
                 }
-            } catch (_) {
+            } catch (e) {
                 // last resort
                 try {
                     window.open("options.html", "_blank");
-                } catch (_) {}
+                } catch (e2) {
+                    Logger.warn("Failed to open options page", e2);
+                }
             }
         };
     }
@@ -141,7 +143,9 @@
     function startStatusSpinner(base = "Refreshing") {
         try {
             clearInterval(statusSpinTimer);
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("Failed to clear status spinner interval", e);
+        }
         let i = 0;
         const frames = ["", ".", "..", "..."];
         statusEl.style.display = "block";
@@ -158,35 +162,14 @@
         if (statusSpinTimer) {
             try {
                 clearInterval(statusSpinTimer);
-            } catch (_) {}
+            } catch (e) {
+                Logger.warn("Failed to clear status spinner interval", e);
+            }
             statusSpinTimer = null;
         }
     }
 
-    /**
-     * Converts seconds to human-readable duration format
-     *
-     * Formats as:
-     * - H:MM:SS for videos over 1 hour
-     * - M:SS for videos under 1 hour
-     * @param {number} seconds - Duration in seconds
-     * @returns {string|null} Formatted duration (e.g., "5:32", "1:23:45") or null if invalid
-     */
-    function humanizeDuration(seconds) {
-        if (seconds == null || !isFinite(seconds) || seconds <= 0) return null;
-        try {
-            const s = Math.round(seconds);
-            const h = Math.floor(s / 3600);
-            const m = Math.floor((s % 3600) / 60);
-            const sec = s % 60;
-            if (h > 0) {
-                return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-            }
-            return `${m}:${String(sec).padStart(2, "0")}`;
-        } catch (_) {
-            return null;
-        }
-    }
+    // humanizeDuration is now imported from utils.js to eliminate duplication
 
     // Cache config (synced with options)
     let TTL_MS = 24 * 60 * 60 * 1000; // default 24 hours
@@ -220,8 +203,8 @@
             if (durationRowEl) {
                 durationRowEl.style.display = showLength ? "" : "none";
             }
-        } catch (_) {
-            /* ignore */
+        } catch (e) {
+            Logger.warn("Failed to load settings in popup", e);
         }
     }
 
@@ -261,10 +244,17 @@
                             if (raw != null) {
                                 try {
                                     result[k] = JSON.parse(raw);
-                                } catch (_) {}
+                                } catch (e) {
+                                    Logger.warn(
+                                        "Failed to parse localStorage item",
+                                        e
+                                    );
+                                }
                             }
                         }
-                    } catch (_) {}
+                    } catch (e) {
+                        Logger.warn("Failed to access localStorage", e);
+                    }
                     resolve(result);
                 } else {
                     resolve({});
@@ -285,7 +275,9 @@
                         for (const [k, v] of Object.entries(items || {})) {
                             ls.setItem(k, JSON.stringify(v));
                         }
-                    } catch (_) {}
+                    } catch (e) {
+                        Logger.warn("Failed to set localStorage", e);
+                    }
                     resolve();
                 } else {
                     resolve();
@@ -312,7 +304,8 @@
                     void _e;
                     resolve(Array.isArray(tabs) ? tabs : []);
                 });
-            } catch (_) {
+            } catch (e) {
+                Logger.warn("tabsQuery failed", e);
                 resolve([]);
             }
         });
@@ -511,47 +504,7 @@
         return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
     }
 
-    /**
-     * Validates that cached data contains at least one valid size value
-     *
-     * Checks both human-readable and byte maps for any non-null values.
-     * Prevents showing empty cache entries as valid data.
-     * @param {Object} cached - The cached data object to validate
-     * @returns {boolean} True if cache contains at least one valid size
-     */
-    function cacheHasAnySize(cached) {
-        try {
-            if (!cached) return false;
-            const keys = [
-                "s144p",
-                "s240p",
-                "s360p",
-                "s480p",
-                "s720p",
-                "s1080p",
-                "s1440p",
-                "s1080p_299",
-                "s1080p_303",
-                "s1080p_399",
-                "s1440p_308",
-                "s1440p_400",
-            ];
-            const b = cached.bytes;
-            const h = cached.human;
-            if (
-                b &&
-                keys.some((k) => typeof b[k] === "number" && isFinite(b[k]))
-            ) {
-                return true;
-            }
-            if (h && keys.some((k) => typeof h[k] === "string" && h[k])) {
-                return true;
-            }
-            return false;
-        } catch (_) {
-            return false;
-        }
-    }
+    // cacheHasAnySize is now imported from utils.js to eliminate duplication
 
     /**
      * Reads cached size data for a video from storage
@@ -560,7 +513,7 @@
      * @returns {Promise<Object|null>} Cached data object or null if not found
      */
     async function readCache(videoId) {
-        const key = `sizeCache_${videoId}`;
+        const key = getCacheKey(videoId);
         const obj = await cacheGet([key]);
         return obj[key] || null;
     }
@@ -571,82 +524,11 @@
      * @param data
      */
     async function writeCache(videoId, data) {
-        const key = `sizeCache_${videoId}`;
+        const key = getCacheKey(videoId);
         await cacheSet({ [key]: data });
     }
 
-    /**
-     * Directly calls the native messaging host to fetch video size data
-     *
-     * Establishes a native connection to ytdlp_host.py and requests size information.
-     * Used as a fallback when background prefetch fails or for forced refreshes.
-     * @param {string} url - The YouTube video URL
-     * @param {number} [durationHint] - Optional duration hint in seconds
-     * @returns {Promise<Object>} Promise resolving to size data or rejecting with error
-     */
-    function callNativeHost(url, durationHint) {
-        return new Promise((resolve, reject) => {
-            const hostName = "com.ytdlp.sizer";
-            let responded = false;
-            let disconnected = false;
-            let port;
-            try {
-                port = chrome.runtime.connectNative(hostName);
-            } catch (e) {
-                reject(
-                    "Failed to connect to native host: " +
-                        (e && e.message ? e.message : String(e))
-                );
-                return;
-            }
-
-            port.onMessage.addListener((msg) => {
-                responded = true;
-                try {
-                    if (msg && msg.ok) {
-                        resolve(msg);
-                    } else {
-                        reject(
-                            (msg && msg.error) ||
-                                "Unknown error from native host."
-                        );
-                    }
-                } finally {
-                    try {
-                        port.disconnect();
-                    } catch (_) {}
-                }
-            });
-
-            port.onDisconnect.addListener(() => {
-                if (disconnected) return;
-                disconnected = true;
-                if (!responded) {
-                    const err = chrome.runtime.lastError
-                        ? chrome.runtime.lastError.message
-                        : "Native host disconnected.";
-                    reject("Failed to connect to native host. " + (err || ""));
-                }
-            });
-
-            try {
-                const payload = { url };
-                if (
-                    typeof durationHint === "number" &&
-                    isFinite(durationHint) &&
-                    durationHint > 0
-                ) {
-                    payload.duration_hint = Math.round(durationHint);
-                }
-                port.postMessage(payload);
-            } catch (e) {
-                reject(
-                    "Failed to send request to native host: " +
-                        (e && e.message ? e.message : String(e))
-                );
-            }
-        });
-    }
+    // callNativeHost is now imported from utils.js to eliminate duplication
 
     /**
      *
@@ -717,7 +599,9 @@
                         chrome && chrome.runtime && chrome.runtime.lastError; // ignore
                 }
             );
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("Failed to send ensureBadge message", e);
+        }
 
         if (!isYouTubeUrl(url)) {
             showError(
@@ -763,7 +647,9 @@
                     }
                 }
             );
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("Failed to send get_current_res message", e);
+        }
 
         // Try cache first
         const cached = await readCache(videoId);
@@ -937,8 +823,11 @@
                                         statusEl.style.display = "none";
                                         return;
                                     }
-                                } catch (_) {
-                                    /* ignore */
+                                } catch (e) {
+                                    Logger.warn(
+                                        "Fallback direct host call failed",
+                                        e
+                                    );
                                 }
                             }
                             const dur =
@@ -1051,16 +940,19 @@
                             noteEl.textContent = "Just updated";
                             return;
                         }
-                    } catch (_) {
-                        /* ignore */
+                    } catch (e) {
+                        Logger.warn(
+                            "Fallback direct host call failed in failure handler",
+                            e
+                        );
                     }
                     noteEl.textContent =
                         "Refresh failed" +
                         (msg && msg.error ? `: ${msg.error}` : "");
                 }
             });
-        } catch (_) {
-            /* ignore */
+        } catch (e) {
+            Logger.warn("Failed to add popup message listener", e);
         }
     } catch (e) {
         showError(

@@ -14,14 +14,13 @@
  * @version 0.2.0
  */
 
-/* global isYouTubeUrl, extractVideoId, humanizeBytes, humanizeDuration, Logger, getCacheKey, cacheHasAnySize, CACHE_KEY_PREFIX */
+/* global isYouTubeUrl, extractVideoId, humanizeBytes, humanizeDuration, Logger, getCacheKey, cacheHasAnySize, CACHE_KEY_PREFIX, callNativeHost */
 /* eslint-disable no-inner-declarations */
 
 // Import shared utilities
 importScripts("utils.js");
 
-/** @constant {string} The native messaging host identifier */
-const HOST_NAME = "com.ytdlp.sizer";
+// HOST_NAME is now imported from utils.js
 
 /** @constant {number} Maximum entries in tracking maps to prevent memory leaks */
 const MAX_MAP_SIZE = 500;
@@ -483,113 +482,7 @@ function cacheGetAll() {
 
 // cacheHasAnySize is now imported from utils.js to eliminate duplication
 
-/**
- * Communicates with the native messaging host to fetch video sizes
- *
- * Establishes a connection to the Python native host (ytdlp_host.py) which
- * runs yt-dlp to extract video format and size information.
- * @async
- * @param {string} url - The YouTube video URL to analyze
- * @param {number} [durationHint] - Optional duration hint in seconds
- * @returns {Promise<Object>} Response with size data for multiple resolutions
- * @throws {Error} If native host connection fails or yt-dlp returns an error
- */
-function callNativeHost(url, durationHint) {
-    /** @constant {number} Timeout for native host calls in milliseconds */
-    const NATIVE_HOST_TIMEOUT_MS = 30000;
-
-    return new Promise((resolve, reject) => {
-        let port;
-        let timeoutId;
-        let responded = false;
-        let disconnected = false;
-
-        // Cleanup function to clear timeout and disconnect port
-        const cleanup = () => {
-            if (timeoutId) {
-                try {
-                    clearTimeout(timeoutId);
-                } catch (e) {
-                    Logger.warn("Failed to clear timeout", e);
-                }
-                timeoutId = null;
-            }
-        };
-
-        try {
-            port = chrome.runtime.connectNative(HOST_NAME);
-        } catch (e) {
-            reject(
-                "Failed to connect to native host: " +
-                    (e && e.message ? e.message : String(e))
-            );
-            return;
-        }
-
-        // Set up client-side timeout to prevent indefinite hangs
-        timeoutId = setTimeout(() => {
-            if (!responded && !disconnected) {
-                disconnected = true;
-                try {
-                    port.disconnect();
-                } catch (e) {
-                    Logger.warn("Failed to disconnect port on timeout", e);
-                }
-                reject("Native host timeout: no response within 30 seconds");
-            }
-        }, NATIVE_HOST_TIMEOUT_MS);
-
-        port.onMessage.addListener((msg) => {
-            responded = true;
-            cleanup();
-            try {
-                if (msg && msg.ok) {
-                    resolve(msg);
-                } else {
-                    reject(
-                        (msg && msg.error) || "Unknown error from native host."
-                    );
-                }
-            } finally {
-                try {
-                    port.disconnect();
-                } catch (e) {
-                    Logger.warn("Failed to disconnect port", e);
-                }
-            }
-        });
-
-        port.onDisconnect.addListener(() => {
-            cleanup();
-            if (disconnected) return;
-            disconnected = true;
-            if (!responded) {
-                const err = chrome.runtime.lastError
-                    ? chrome.runtime.lastError.message
-                    : "Native host disconnected.";
-                reject("Failed to connect to native host. " + (err || ""));
-            }
-        });
-
-        try {
-            const payload = { url };
-            if (
-                typeof durationHint === "number" &&
-                isFinite(durationHint) &&
-                durationHint > 0
-            ) {
-                payload.duration_hint = Math.round(durationHint);
-            }
-            port.postMessage(payload);
-        } catch (e) {
-            cleanup();
-            reject(
-                "Failed to send request to native host: " +
-                    (e && e.message ? e.message : String(e))
-            );
-        }
-    });
-}
+// callNativeHost is now imported from utils.js to eliminate duplication
 
 /**
  * Checks if cached size data exists and is still fresh (within TTL)

@@ -17,7 +17,7 @@
  * @version 0.2.0
  */
 
-/* global isYouTubeUrl, extractVideoId */
+/* global isYouTubeUrl, extractVideoId, Logger */
 
 (function () {
     // Detect current playing resolution on YouTube and send updates
@@ -49,7 +49,8 @@
             const u = new URL(src);
             const it = u.searchParams.get("itag");
             return it || null;
-        } catch (_) {
+        } catch (e) {
+            Logger.warn("extractCurrentItag failed", e);
             return null;
         }
     }
@@ -151,7 +152,9 @@
                     void _e;
                 }
             );
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("readAndNotify sendMessage failed", e);
+        }
     }
 
     // Track URL changes without injecting inline scripts (CSP-safe)
@@ -169,7 +172,9 @@
     function startUrlPoller(intervalMs = 1500) {
         try {
             if (urlPollId) clearInterval(urlPollId);
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("clearInterval failed", e);
+        }
         urlPollId = setInterval(() => {
             if (location.href !== lastHref) {
                 lastHref = location.href;
@@ -267,11 +272,15 @@
                         itag,
                         durationSec: dur && dur > 0 ? dur : undefined,
                     });
-                } catch (_) {}
+                } catch (e) {
+                    Logger.warn("sendResponse failed", e);
+                }
                 return true;
             }
         });
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("Failed to add runtime message listener", e);
+    }
 
     // Hook into SPA navigations with minimal overhead (no inline scripts)
     listenForSpaNavigations();

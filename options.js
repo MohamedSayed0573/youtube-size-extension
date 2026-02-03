@@ -16,6 +16,7 @@
  * @author YouTube Size Extension Team
  * @version 0.2.0
  */
+/* global Logger */
 
 (function () {
     /** @constant {Object} Default settings values */
@@ -127,8 +128,8 @@
                 $("cloudApiUrl").value = cfg.cloudApiUrl || "";
             }
             setResCheckboxes(cfg.resolutions || defaultSettings.resolutions);
-        } catch (_) {
-            /* ignore */
+        } catch (e) {
+            Logger.warn("Failed to load settings in options", e);
         }
     }
 
