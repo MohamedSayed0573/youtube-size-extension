@@ -89,16 +89,18 @@
     }
 
     /**
-     *
+     * Get selected resolutions in correct order (low to high)
+     * @returns {string[]} Array of selected resolution labels
      */
     function getSelectedRes() {
         const res = [];
-        if ($("res_1440")?.checked) res.push("1440p");
+        if ($("res_144")?.checked) res.push("144p");
         if ($("res_240")?.checked) res.push("240p");
         if ($("res_360")?.checked) res.push("360p");
         if ($("res_480")?.checked) res.push("480p");
         if ($("res_720")?.checked) res.push("720p");
         if ($("res_1080")?.checked) res.push("1080p");
+        if ($("res_1440")?.checked) res.push("1440p");
         return res;
     }
 
