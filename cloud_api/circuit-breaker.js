@@ -199,20 +199,46 @@ class CircuitBreaker extends EventEmitter {
      */
     _onFailure(error) {
         this.stats.totalFailures++;
+
+        // Classify errors: only count infrastructure failures toward circuit threshold
+        // User errors (invalid input, unavailable videos) should NOT trip the circuit
+        const infrastructureErrors = [
+            "TIMEOUT",
+            "NOT_FOUND", // yt-dlp binary not found (infrastructure issue)
+            "RATE_LIMITED", // YouTube rate limiting us (infrastructure issue)
+            "NETWORK_ERROR", // Network failures
+            "ECONNREFUSED",
+            "ECONNRESET",
+            "ETIMEDOUT",
+        ];
+
+        // These are user-caused errors that should NOT count toward circuit threshold
+        const userErrors = [
+            "VIDEO_UNAVAILABLE", // User requested private/deleted video
+            "INVALID_URL", // User sent invalid URL
+            "QUEUE_FULL", // Backpressure - not an infrastructure failure
+        ];
+
+        const isInfrastructureError = infrastructureErrors.includes(error.code);
+        const isUserError = userErrors.includes(error.code);
+
+        // Only count infrastructure errors toward the circuit threshold
+        if (isUserError) {
+            // Don't count user errors - they shouldn't trip the circuit
+            this.emit("userError", {
+                code: error.code,
+                message: error.message,
+                countedAsFailure: false,
+            });
+            return;
+        }
+
+        // Count this as a failure that could trip the circuit
         this.failures++;
         this.successes = 0; // Reset success count
 
-        // Certain errors should trip circuit faster
-        const criticalErrors = [
-            "TIMEOUT",
-            "NOT_FOUND",
-            "RATE_LIMITED",
-            "NETWORK_ERROR",
-        ];
-        const isCritical = criticalErrors.includes(error.code);
-
         if (this.state === STATE.HALF_OPEN) {
-            // Any failure in half-open returns to open
+            // Any infrastructure failure in half-open returns to open
             this._setState(STATE.OPEN);
         } else if (this.state === STATE.CLOSED) {
             // Check if we've exceeded threshold
@@ -221,8 +247,8 @@ class CircuitBreaker extends EventEmitter {
                 this.failures >= this.failureThreshold
             ) {
                 this._setState(STATE.OPEN);
-            } else if (isCritical && this.failures >= 3) {
-                // Trip faster for critical errors
+            } else if (isInfrastructureError && this.failures >= 3) {
+                // Trip faster for known infrastructure errors
                 this._setState(STATE.OPEN);
             }
         }
