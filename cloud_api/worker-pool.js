@@ -50,6 +50,7 @@ class WorkerPool extends EventEmitter {
      * @param {number} [options.taskTimeout] - Task timeout in ms
      * @param {number} [options.maxTasksPerWorker] - Tasks before recycling
      * @param {number} [options.idleTimeout] - Idle time before terminating worker
+     * @param {number} [options.maxQueueSize] - Maximum pending tasks before rejection
      */
     constructor(options = {}) {
         super();
@@ -61,6 +62,7 @@ class WorkerPool extends EventEmitter {
         this.taskTimeout = options.taskTimeout || 30000;
         this.maxTasksPerWorker = options.maxTasksPerWorker || 100;
         this.idleTimeout = options.idleTimeout || 120000;
+        this.maxQueueSize = options.maxQueueSize || 100; // Backpressure limit
 
         this.workers = new Map(); // workerId -> worker info
         this.taskQueue = []; // pending tasks
@@ -276,6 +278,20 @@ class WorkerPool extends EventEmitter {
             if (availableWorker) {
                 this._executeTask(availableWorker, taskInfo);
             } else {
+                // Backpressure: reject if queue is full
+                if (this.taskQueue.length >= this.maxQueueSize) {
+                    const error = new Error(
+                        `Task queue full (${this.maxQueueSize} pending). Try again later.`
+                    );
+                    error.code = "QUEUE_FULL";
+                    this.emit("queueFull", {
+                        queueLength: this.taskQueue.length,
+                        maxQueueSize: this.maxQueueSize,
+                    });
+                    reject(error);
+                    return;
+                }
+
                 // Queue task
                 this.taskQueue.push(taskInfo);
                 this.stats.queuedTasks = this.taskQueue.length;
