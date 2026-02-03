@@ -527,15 +527,19 @@ async function prefetchForUrl(url, tabId, forced = false) {
     const last = lastFetchMs.get(videoId) || 0;
     if (!forced && now - last < 10000) return; // 10s window
 
-    if (!forced && (await isFreshInCache(videoId))) {
-        if (typeof tabId === "number") setBadgeCheck(tabId);
-        return; // already fresh
-    }
+    // IMPORTANT: Check and set inFlight atomically BEFORE any async operations
+    // to prevent race conditions where multiple calls could pass the check
     if (inFlight.has(videoId)) return; // already fetching
     inFlight.add(videoId);
     lastFetchMs.set(videoId, now);
 
     try {
+        // Now safe to do async cache check - we own the lock for this videoId
+        if (!forced && (await isFreshInCache(videoId))) {
+            if (typeof tabId === "number") setBadgeCheck(tabId);
+            return; // already fresh
+        }
+
         // Show a spinner badge on the active tab if available
         startBadgeSpinner(tabId);
 
