@@ -14,7 +14,7 @@
  * @version 0.2.0
  */
 
-/* global isYouTubeUrl, extractVideoId, humanizeBytes, humanizeDuration, Logger */
+/* global isYouTubeUrl, extractVideoId, humanizeBytes, humanizeDuration, Logger, getCacheKey, cacheHasAnySize, CACHE_KEY_PREFIX */
 /* eslint-disable no-inner-declarations */
 
 // Import shared utilities
@@ -122,7 +122,9 @@ function getDurationHint(videoId) {
         if (!ts || Date.now() - ts > HINT_TTL_MS) {
             try {
                 durationHints.delete(videoId);
-            } catch (_) {}
+            } catch (e) {
+                Logger.warn("Failed to delete expired duration hint", e);
+            }
             return null;
         }
         const v =
@@ -130,7 +132,8 @@ function getDurationHint(videoId) {
                 ? rec.d
                 : null;
         return v ? Math.round(v) : null;
-    } catch (_) {
+    } catch (e) {
+        Logger.warn("getDurationHint failed", e);
         return null;
     }
 }
@@ -157,7 +160,9 @@ function pruneDurationHints() {
                 durationHints.delete(vid);
             }
         }
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("pruneDurationHints failed", e);
+    }
 }
 
 /**
@@ -173,7 +178,9 @@ function pruneLastFetchMs() {
                 lastFetchMs.delete(vid);
             }
         }
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("pruneLastFetchMs failed", e);
+    }
 }
 
 /**
@@ -201,7 +208,8 @@ function tabsQuery(queryInfo) {
                 void _e;
                 resolve(Array.isArray(tabs) ? tabs : []);
             });
-        } catch (_) {
+        } catch (e) {
+            Logger.warn("tabsQuery failed", e);
             resolve([]);
         }
     });
@@ -219,7 +227,8 @@ function tabsGet(tabId) {
                 void _e;
                 resolve(tab || null);
             });
-        } catch (_) {
+        } catch (e) {
+            Logger.warn("tabsGet failed", e);
             resolve(null);
         }
     });
@@ -472,42 +481,7 @@ function cacheGetAll() {
 // but this caused race conditions. Now we rely on cacheArea detection
 // at startup to pick the right storage and stick with it.
 
-// Validate that a cached entry actually contains some size data
-/**
- *
- * @param cached
- */
-function cacheHasAnySize(cached) {
-    try {
-        if (!cached) return false;
-        const keys = [
-            "s144p",
-            "s240p",
-            "s360p",
-            "s480p",
-            "s720p",
-            "s1080p",
-            "s1440p",
-            "s1080p_299",
-            "s1080p_303",
-            "s1080p_399",
-            "s1440p_308",
-            "s1440p_400",
-        ];
-        const b = cached.bytes;
-        const h = cached.human;
-        if (b && keys.some((k) => typeof b[k] === "number" && isFinite(b[k]))) {
-            return true;
-        }
-        if (h && keys.some((k) => typeof h[k] === "string" && h[k])) {
-            return true;
-        }
-        return false;
-    } catch (e) {
-        Logger.warn("cacheHasAnySize check failed", e);
-        return false;
-    }
-}
+// cacheHasAnySize is now imported from utils.js to eliminate duplication
 
 /**
  * Communicates with the native messaging host to fetch video sizes
@@ -521,8 +495,27 @@ function cacheHasAnySize(cached) {
  * @throws {Error} If native host connection fails or yt-dlp returns an error
  */
 function callNativeHost(url, durationHint) {
+    /** @constant {number} Timeout for native host calls in milliseconds */
+    const NATIVE_HOST_TIMEOUT_MS = 30000;
+
     return new Promise((resolve, reject) => {
         let port;
+        let timeoutId;
+        let responded = false;
+        let disconnected = false;
+
+        // Cleanup function to clear timeout and disconnect port
+        const cleanup = () => {
+            if (timeoutId) {
+                try {
+                    clearTimeout(timeoutId);
+                } catch (e) {
+                    Logger.warn("Failed to clear timeout", e);
+                }
+                timeoutId = null;
+            }
+        };
+
         try {
             port = chrome.runtime.connectNative(HOST_NAME);
         } catch (e) {
@@ -533,11 +526,22 @@ function callNativeHost(url, durationHint) {
             return;
         }
 
-        let responded = false;
-        let disconnected = false;
+        // Set up client-side timeout to prevent indefinite hangs
+        timeoutId = setTimeout(() => {
+            if (!responded && !disconnected) {
+                disconnected = true;
+                try {
+                    port.disconnect();
+                } catch (e) {
+                    Logger.warn("Failed to disconnect port on timeout", e);
+                }
+                reject("Native host timeout: no response within 30 seconds");
+            }
+        }, NATIVE_HOST_TIMEOUT_MS);
 
         port.onMessage.addListener((msg) => {
             responded = true;
+            cleanup();
             try {
                 if (msg && msg.ok) {
                     resolve(msg);
@@ -556,6 +560,7 @@ function callNativeHost(url, durationHint) {
         });
 
         port.onDisconnect.addListener(() => {
+            cleanup();
             if (disconnected) return;
             disconnected = true;
             if (!responded) {
@@ -577,6 +582,7 @@ function callNativeHost(url, durationHint) {
             }
             port.postMessage(payload);
         } catch (e) {
+            cleanup();
             reject(
                 "Failed to send request to native host: " +
                     (e && e.message ? e.message : String(e))
@@ -592,7 +598,7 @@ function callNativeHost(url, durationHint) {
  * @returns {Promise<boolean>} True if cache is fresh and contains valid size data
  */
 async function isFreshInCache(videoId) {
-    const key = `sizeCache_${videoId}`;
+    const key = getCacheKey(videoId);
     const obj = await cacheGet([key]);
     const cached = obj[key] || null;
     if (!cached || typeof cached.timestamp !== "number") return false;
@@ -665,7 +671,7 @@ async function prefetchForUrl(url, tabId, forced = false) {
             }
         }
         if (msg && msg.ok) {
-            const key = `sizeCache_${videoId}`;
+            const key = getCacheKey(videoId);
             await cacheSet({
                 [key]: {
                     timestamp: Date.now(),
@@ -686,13 +692,17 @@ async function prefetchForUrl(url, tabId, forced = false) {
                             chrome.runtime.lastError; // swallow
                     }
                 );
-            } catch (_) {}
+            } catch (e) {
+                Logger.warn("Failed to send sizeCacheUpdated message", e);
+            }
 
             // Success badge: stop spinner and show persistent checkmark
             if (typeof tabId === "number") {
                 try {
                     stopBadgeSpinner(tabId);
-                } catch (_) {}
+                } catch (e) {
+                    Logger.warn("Failed to stop badge spinner", e);
+                }
                 setBadgeCheck(tabId);
             }
         }
@@ -701,7 +711,9 @@ async function prefetchForUrl(url, tabId, forced = false) {
         if (typeof tabId === "number") {
             try {
                 stopBadgeSpinner(tabId);
-            } catch (_) {}
+            } catch (e) {
+                Logger.warn("Failed to stop badge spinner on error", e);
+            }
             try {
                 const vidFresh = await isFreshInCache(videoId);
                 if (vidFresh) {
@@ -722,10 +734,14 @@ async function prefetchForUrl(url, tabId, forced = false) {
                     setTimeout(() => {
                         try {
                             chrome.action.setBadgeText({ tabId, text: "" });
-                        } catch (_) {}
+                        } catch (e) {
+                            Logger.warn("Failed to clear error badge", e);
+                        }
                     }, CLEAR_BADGE_MS);
                 }
-            } catch (_) {}
+            } catch (e) {
+                Logger.warn("Failed to handle error badge state", e);
+            }
         }
         try {
             chrome.runtime.sendMessage(
@@ -739,7 +755,9 @@ async function prefetchForUrl(url, tabId, forced = false) {
                         chrome && chrome.runtime && chrome.runtime.lastError; // swallow
                 }
             );
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("Failed to send sizeCacheFailed message", e);
+        }
         // Swallow errors; background prefetch is best-effort
     } finally {
         inFlight.delete(videoId);
@@ -764,7 +782,9 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
             prefetchForUrl(tab.url, activeInfo.tabId);
             ensureBadgeForTab(tab.url, activeInfo.tabId);
         }
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("onActivated handler failed", e);
+    }
 });
 
 // webNavigation listeners removed; content script notifies SPA navigations instead.
@@ -783,7 +803,9 @@ async function prefetchExistingYouTubeTabs() {
                 ensureBadgeForTab(t.url, t.id);
             }
         }
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("prefetchExistingYouTubeTabs failed", e);
+    }
 }
 
 chrome.runtime.onStartup.addListener(() => {
@@ -809,7 +831,7 @@ async function cleanupOldCaches() {
         const now = Date.now();
         const keysToRemove = [];
         for (const [k, v] of Object.entries(all)) {
-            if (!k.startsWith("sizeCache_")) continue;
+            if (!k.startsWith(CACHE_KEY_PREFIX)) continue;
             const ts = v && typeof v.timestamp === "number" ? v.timestamp : 0;
             // Remove entries older than 24 hours (4x TTL safety buffer could be too big; keep it simple)
             if (!ts || now - ts > 24 * 60 * 60 * 1000) {
@@ -819,7 +841,9 @@ async function cleanupOldCaches() {
         if (keysToRemove.length) await cacheRemove(keysToRemove);
         // Also prune all tracking maps
         pruneAllMaps();
-    } catch (_) {}
+    } catch (e) {
+        Logger.warn("cleanupOldCaches failed", e);
+    }
 }
 
 // Alarms removed to reduce permissions; cleanup is run on install and can be
@@ -855,14 +879,18 @@ try {
                     if (dur && vid) {
                         durationHints.set(vid, { d: dur, ts: Date.now() });
                     }
-                } catch (_) {}
+                } catch (e) {
+                    Logger.warn("Failed to capture duration hint", e);
+                }
                 if (url && typeof tabId === "number") {
                     prefetchForUrl(url, tabId);
                     ensureBadgeForTab(url, tabId);
                 }
                 try {
                     sendResponse({ ok: true });
-                } catch (_) {}
+                } catch (e) {
+                    Logger.warn("Failed to send yt_current_res response", e);
+                }
                 return;
             }
             if (msg.type === "ensureBadge") {
@@ -880,7 +908,9 @@ try {
                 }
                 try {
                     sendResponse({ ok: true });
-                } catch (_) {}
+                } catch (e) {
+                    Logger.warn("Failed to send ensureBadge response", e);
+                }
                 return;
             }
             if (msg.type !== "prefetch" || !msg.url) return;
@@ -896,14 +926,18 @@ try {
             if (!isYouTubeUrl(url)) {
                 try {
                     sendResponse({ ok: false, reason: "not_youtube" });
-                } catch (_) {}
+                } catch (e) {
+                    Logger.warn("Failed to send not_youtube response", e);
+                }
                 return;
             }
             const videoId = extractVideoId(url);
             if (!videoId) {
                 try {
                     sendResponse({ ok: false, reason: "no_video_id" });
-                } catch (_) {}
+                } catch (e) {
+                    Logger.warn("Failed to send no_video_id response", e);
+                }
                 return;
             }
             // Capture optional durationSec from popup-triggered prefetch
@@ -915,7 +949,9 @@ try {
                         ? Math.round(msg.durationSec)
                         : null;
                 if (dur) durationHints.set(videoId, { d: dur, ts: Date.now() });
-            } catch (_) {}
+            } catch (e) {
+                Logger.warn("Failed to capture prefetch duration hint", e);
+            }
             const forced = !!msg.forced;
             const now = Date.now();
             const last = lastFetchMs.get(videoId) || 0;
@@ -926,30 +962,42 @@ try {
                 if (fresh) {
                     try {
                         sendResponse({ ok: true, reason: "fresh" });
-                    } catch (_) {}
+                    } catch (e) {
+                        Logger.warn("Failed to send fresh response", e);
+                    }
                     return;
                 }
                 if (inFlight.has(videoId)) {
                     try {
                         sendResponse({ ok: true, reason: "in_flight" });
-                    } catch (_) {}
+                    } catch (e) {
+                        Logger.warn("Failed to send in_flight response", e);
+                    }
                     return;
                 }
                 if (rateLimited) {
                     try {
                         sendResponse({ ok: true, reason: "rate_limited" });
-                    } catch (_) {}
+                    } catch (e) {
+                        Logger.warn("Failed to send rate_limited response", e);
+                    }
                     return;
                 }
                 prefetchForUrl(url, tabId, forced);
                 try {
                     sendResponse({ ok: true, reason: "started" });
-                } catch (_) {}
+                } catch (e) {
+                    Logger.warn("Failed to send started response", e);
+                }
             })();
             return true; // keep the message channel alive for async freshness check
-        } catch (_) {}
+        } catch (e) {
+            Logger.warn("Message listener callback failed", e);
+        }
     });
-} catch (_) {}
+} catch (e) {
+    Logger.warn("Failed to add message listener", e);
+}
 
 // Load settings on startup
 loadSettings();
