@@ -78,12 +78,16 @@ class CircuitBreaker extends EventEmitter {
         this.nextAttempt = Date.now();
         this.lastStateChange = Date.now();
 
+        // Request deduplication: key -> Promise
+        this.inFlightRequests = new Map();
+
         // Metrics
         this.stats = {
             totalRequests: 0,
             totalFailures: 0,
             totalSuccesses: 0,
             rejectedRequests: 0,
+            deduplicatedRequests: 0,
             stateChanges: 0,
         };
     }
@@ -117,6 +121,36 @@ class CircuitBreaker extends EventEmitter {
             this._onFailure(error);
             throw error;
         }
+    }
+
+    /**
+     * Execute a function with circuit breaker protection and request deduplication
+     *
+     * If a request with the same key is already in-flight, returns the existing
+     * promise instead of starting a new request. This prevents duplicate failures
+     * from prematurely tripping the circuit.
+     * @async
+     * @param {string} key - Unique key for deduplication (e.g., video URL)
+     * @param {Function} fn - Async function to execute
+     * @returns {Promise<any>} Result from the function
+     * @throws {Error} If circuit is open or function fails
+     */
+    async executeWithDedup(key, fn) {
+        // Check if request with same key is already in-flight
+        if (this.inFlightRequests.has(key)) {
+            this.stats.deduplicatedRequests++;
+            this.emit("deduplicated", { key });
+            return this.inFlightRequests.get(key);
+        }
+
+        // Create promise and store it
+        const promise = this.execute(fn).finally(() => {
+            // Remove from in-flight map when complete (success or failure)
+            this.inFlightRequests.delete(key);
+        });
+
+        this.inFlightRequests.set(key, promise);
+        return promise;
     }
 
     /**
