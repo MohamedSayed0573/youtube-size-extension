@@ -2,12 +2,77 @@
  * Shared utility functions for YouTube Size Extension
  *
  * This module provides common functionality used across multiple components:
- * - URL validation and parsing
+ * - URL validation and parsing (with security hardening)
  * - Video ID extraction
  * - Data formatting (bytes, duration)
+ * - Cache utilities
  * @file Shared utilities to eliminate code duplication
  * @module utils
  */
+
+/** @constant {string} Prefix for all cache keys */
+const CACHE_KEY_PREFIX = "sizeCache_";
+
+/**
+ * Generates a cache key for a video ID
+ * @param {string} videoId - The YouTube video ID
+ * @returns {string} The cache key (e.g., "sizeCache_dQw4w9WgXcQ")
+ */
+function getCacheKey(videoId) {
+    return `${CACHE_KEY_PREFIX}${videoId}`;
+}
+
+/**
+ * Resolution size keys used for validation
+ * @constant {string[]}
+ */
+const SIZE_KEYS = [
+    "s144p",
+    "s240p",
+    "s360p",
+    "s480p",
+    "s720p",
+    "s1080p",
+    "s1440p",
+    "s1080p_299",
+    "s1080p_303",
+    "s1080p_399",
+    "s1440p_308",
+    "s1440p_400",
+];
+
+/**
+ * Validates that cached data contains at least one valid size value
+ *
+ * Checks both human-readable and byte maps for any non-null values.
+ * Prevents showing empty cache entries as valid data.
+ * @param {Object} cached - The cached data object to validate
+ * @returns {boolean} True if cache contains at least one valid size
+ */
+function cacheHasAnySize(cached) {
+    try {
+        if (!cached) return false;
+        const b = cached.bytes;
+        const h = cached.human;
+        if (
+            b &&
+            SIZE_KEYS.some((k) => typeof b[k] === "number" && isFinite(b[k]))
+        ) {
+            return true;
+        }
+        if (h && SIZE_KEYS.some((k) => typeof h[k] === "string" && h[k])) {
+            return true;
+        }
+        return false;
+    } catch (e) {
+        // Log but don't fail - caller will treat as false
+        if (typeof Logger !== "undefined" && Logger.warn) {
+            Logger.warn("cacheHasAnySize check failed", e);
+        }
+        return false;
+    }
+}
+
 /**
  * Simple logger wrapper that only logs in development mode
  *
@@ -25,9 +90,18 @@ const Logger = {
         if (this._isDev !== null) return this._isDev;
         try {
             // Unpacked extensions usually don't have an update_url
-            const manifest = chrome.runtime.getManifest();
-            this._isDev = !manifest.update_url;
-        } catch (_) {
+            if (
+                typeof chrome !== "undefined" &&
+                chrome.runtime &&
+                chrome.runtime.getManifest
+            ) {
+                const manifest = chrome.runtime.getManifest();
+                this._isDev = !manifest.update_url;
+            } else {
+                // Fallback for non-ext environments (tests)
+                this._isDev = true;
+            }
+        } catch (e) {
             // Fallback for non-ext environments (tests)
             this._isDev = false;
         }
@@ -46,28 +120,82 @@ const Logger = {
         if (this.isDev()) console.error("[ytSize]", ...args);
     },
 };
+
+/**
+ * Dangerous patterns that indicate potential command injection
+ * @constant {RegExp[]}
+ */
+const DANGEROUS_URL_PATTERNS = [
+    /[;&|`$(){}[\]<>\\]/, // Shell metacharacters
+    /\$\(/, // Command substitution
+    /`/, // Backtick execution
+    /\.\.\//, // Path traversal
+    /file:\/\//, // File protocol
+];
+
+/**
+ * Valid YouTube hostnames
+ * @constant {string[]}
+ */
+const VALID_YOUTUBE_HOSTS = [
+    "www.youtube.com",
+    "youtube.com",
+    "m.youtube.com",
+    "youtu.be",
+];
+
 /**
  * Validates if a URL is a legitimate YouTube URL
  *
- * Checks for valid YouTube domains (youtube.com, youtu.be) and ensures
- * the URL contains a video identifier (v param, /watch path, or /shorts path).
+ * Security-hardened validation that:
+ * - Checks for valid YouTube domains (youtube.com, youtu.be)
+ * - Requires HTTPS protocol
+ * - Blocks shell metacharacters and command injection patterns
+ * - Ensures the URL contains a video identifier
  * @param {string} url - The URL to validate
- * @returns {boolean} True if the URL is a valid YouTube video URL
- * @throws {Error} Re-throws unexpected errors (not URL parsing errors)
+ * @returns {boolean} True if the URL is a valid and safe YouTube video URL
  * @example
  *   isYouTubeUrl('https://youtube.com/watch?v=dQw4w9WgXcQ') // true
  *   isYouTubeUrl('https://example.com') // false
+ *   isYouTubeUrl('https://youtube.com/watch?v=xxx;rm -rf /') // false (blocked)
  */
 function isYouTubeUrl(url) {
     try {
+        if (!url || typeof url !== "string") {
+            return false;
+        }
+
+        // Check length (YouTube URLs shouldn't be extremely long)
+        if (url.length > 200) {
+            return false;
+        }
+
+        // Block shell metacharacters and command injection patterns
+        for (const pattern of DANGEROUS_URL_PATTERNS) {
+            if (pattern.test(url)) {
+                return false;
+            }
+        }
+
         const u = new URL(url);
-        return (
-            (u.host.includes("youtube.com") || u.host.includes("youtu.be")) &&
-            (u.searchParams.has("v") ||
-                u.pathname.startsWith("/watch") ||
-                u.host.includes("youtu.be") ||
-                /\/shorts\//.test(u.pathname))
-        );
+
+        // Require HTTPS protocol for security
+        if (u.protocol !== "https:") {
+            return false;
+        }
+
+        // Check for valid YouTube hostname
+        if (!VALID_YOUTUBE_HOSTS.includes(u.hostname)) {
+            return false;
+        }
+
+        // Validate has video ID or is a valid path
+        const hasVideoParam = u.searchParams.has("v");
+        const isWatchPath = u.pathname.startsWith("/watch");
+        const isShortsPath = /^\/shorts\/[\w-]+$/.test(u.pathname);
+        const isShortUrl = u.hostname === "youtu.be";
+
+        return hasVideoParam || isWatchPath || isShortsPath || isShortUrl;
     } catch (error) {
         // TypeError is expected for malformed URLs - return false
         if (error instanceof TypeError) {
@@ -103,7 +231,7 @@ function extractVideoId(url) {
         const m = u.pathname.match(/\/shorts\/([\w-]{5,})/);
         if (m) return m[1];
         return null;
-    } catch (_) {
+    } catch (e) {
         return null;
     }
 }
@@ -147,14 +275,19 @@ function humanizeBytes(n) {
  *   humanizeDuration(null) // null
  */
 function humanizeDuration(seconds) {
-    if (!seconds || seconds <= 0) return null;
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    if (h > 0) {
-        return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    if (seconds == null || !isFinite(seconds) || seconds <= 0) return null;
+    try {
+        const s = Math.round(seconds);
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        if (h > 0) {
+            return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+        }
+        return `${m}:${String(sec).padStart(2, "0")}`;
+    } catch (e) {
+        return null;
     }
-    return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 // Export for use in other modules (browser extension context)
@@ -162,10 +295,16 @@ function humanizeDuration(seconds) {
 if (typeof module !== "undefined" && module.exports) {
     // Node.js/CommonJS environment
     module.exports = {
+        CACHE_KEY_PREFIX,
+        getCacheKey,
+        cacheHasAnySize,
+        SIZE_KEYS,
         isYouTubeUrl,
         extractVideoId,
         humanizeBytes,
         humanizeDuration,
         Logger,
+        DANGEROUS_URL_PATTERNS,
+        VALID_YOUTUBE_HOSTS,
     };
 }
