@@ -701,6 +701,18 @@ async function prefetchExistingYouTubeTabs() {
     }
 }
 
+try {
+    chrome.tabs.onRemoved.addListener((tabId) => {
+        try {
+            stopBadgeSpinner(tabId);
+        } catch (e) {
+            Logger.warn("Failed to stop badge spinner on tab remove", e);
+        }
+    });
+} catch (e) {
+    Logger.warn("Failed to add tabs.onRemoved listener", e);
+}
+
 chrome.runtime.onStartup.addListener(() => {
     pruneAllMaps();
     prefetchExistingYouTubeTabs();

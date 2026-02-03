@@ -364,9 +364,7 @@
             selectedResolutions.includes(r)
         );
         // Clear existing content safely
-        while (sizesContainer.firstChild) {
-            sizesContainer.removeChild(sizesContainer.firstChild);
-        }
+        sizesContainer.replaceChildren();
 
         const frag = document.createDocumentFragment();
         for (const r of selectedOrdered) {

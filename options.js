@@ -26,7 +26,7 @@
         showBadge: true,
         showLength: true,
         useCloud: true,
-        cloudApiUrl: "https://your-api.example.com/size",
+        cloudApiUrl: "",
         resolutions: ["480p", "720p", "1080p", "1440p"],
     };
 

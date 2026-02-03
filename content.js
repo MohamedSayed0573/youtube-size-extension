@@ -20,6 +20,10 @@
 /* global isYouTubeUrl, extractVideoId, Logger */
 
 (function () {
+    // Prevent multiple injections
+    if (window.hasRunYouTubeSize) return;
+    window.hasRunYouTubeSize = true;
+
     // Detect current playing resolution on YouTube and send updates
     let lastLabel = null;
     let lastHeight = null;
@@ -181,6 +185,15 @@
                 setTimeout(() => readAndNotify(true), 300);
             }
         }, intervalMs);
+
+        // Cleanup on unload to prevent leaks
+        window.addEventListener("beforeunload", () => {
+            try {
+                if (urlPollId) clearInterval(urlPollId);
+            } catch (e) {
+                // ignore
+            }
+        });
     }
 
     /**
