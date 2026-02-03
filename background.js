@@ -25,6 +25,12 @@ importScripts("utils.js");
 /** @constant {number} Maximum entries in tracking maps to prevent memory leaks */
 const MAX_MAP_SIZE = 500;
 
+/** @constant {number} Prune maps every N insertions to prevent memory buildup */
+const PRUNE_INTERVAL = 50;
+
+/** @type {number} Counter to trigger periodic pruning */
+let insertionCounter = 0;
+
 // In-flight requests to avoid duplicate native host calls per video
 const inFlight = new Set();
 const CLEAR_BADGE_MS = 8000; // Clear badge after 8s
@@ -188,6 +194,62 @@ function pruneLastFetchMs() {
 function pruneAllMaps() {
     pruneDurationHints();
     pruneLastFetchMs();
+}
+
+/**
+ * Triggers periodic pruning based on insertion count
+ * Called after each map insertion to proactively prevent memory buildup
+ */
+function maybeProactivePrune() {
+    insertionCounter++;
+    if (insertionCounter >= PRUNE_INTERVAL) {
+        insertionCounter = 0;
+        // Use setTimeout to not block the current operation
+        setTimeout(() => {
+            try {
+                pruneAllMaps();
+            } catch (e) {
+                Logger.warn("Proactive prune failed", e);
+            }
+        }, 0);
+    }
+}
+
+/**
+ * Safely adds a duration hint with proactive pruning
+ * @param {string} videoId - The video ID
+ * @param {number} duration - Duration in seconds
+ */
+function addDurationHint(videoId, duration) {
+    if (
+        !videoId ||
+        typeof duration !== "number" ||
+        !isFinite(duration) ||
+        duration <= 0
+    ) {
+        return;
+    }
+    try {
+        durationHints.set(videoId, { d: Math.round(duration), ts: Date.now() });
+        maybeProactivePrune();
+    } catch (e) {
+        Logger.warn("Failed to add duration hint", e);
+    }
+}
+
+/**
+ * Safely updates lastFetchMs with proactive pruning
+ * @param {string} videoId - The video ID
+ * @param {number} timestamp - Timestamp in milliseconds
+ */
+function updateLastFetchMs(videoId, timestamp) {
+    if (!videoId) return;
+    try {
+        lastFetchMs.set(videoId, timestamp);
+        maybeProactivePrune();
+    } catch (e) {
+        Logger.warn("Failed to update lastFetchMs", e);
+    }
 }
 
 // Badge spinner management per tab
@@ -531,7 +593,7 @@ async function prefetchForUrl(url, tabId, forced = false) {
     // to prevent race conditions where multiple calls could pass the check
     if (inFlight.has(videoId)) return; // already fetching
     inFlight.add(videoId);
-    lastFetchMs.set(videoId, now);
+    updateLastFetchMs(videoId, now);
 
     try {
         // Now safe to do async cache check - we own the lock for this videoId
@@ -786,7 +848,7 @@ try {
                     const vid =
                         msg.videoId || (url ? extractVideoId(url) : null);
                     if (dur && vid) {
-                        durationHints.set(vid, { d: dur, ts: Date.now() });
+                        addDurationHint(vid, dur);
                     }
                 } catch (e) {
                     Logger.warn("Failed to capture duration hint", e);
@@ -857,7 +919,7 @@ try {
                     msg.durationSec > 0
                         ? Math.round(msg.durationSec)
                         : null;
-                if (dur) durationHints.set(videoId, { d: dur, ts: Date.now() });
+                if (dur) addDurationHint(videoId, dur);
             } catch (e) {
                 Logger.warn("Failed to capture prefetch duration hint", e);
             }
