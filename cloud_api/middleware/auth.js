@@ -5,6 +5,9 @@
 
 const crypto = require("crypto");
 
+/** @constant {number} Minimum required API key length for security */
+const MIN_API_KEY_LENGTH = 16;
+
 /**
  * Constant-time comparison of two strings to prevent timing attacks
  * @param {string} a - First string
@@ -27,6 +30,30 @@ function safeCompare(a, b) {
 }
 
 /**
+ * Validate that API key meets security requirements
+ * @param {string} apiKey - The API key to validate
+ * @returns {{ valid: boolean, error?: string }} Validation result
+ */
+function validateApiKey(apiKey) {
+    if (!apiKey || typeof apiKey !== "string") {
+        return { valid: false, error: "API key is not configured" };
+    }
+
+    if (apiKey.trim().length === 0) {
+        return { valid: false, error: "API key cannot be empty" };
+    }
+
+    if (apiKey.length < MIN_API_KEY_LENGTH) {
+        return {
+            valid: false,
+            error: `API key must be at least ${MIN_API_KEY_LENGTH} characters for security`,
+        };
+    }
+
+    return { valid: true };
+}
+
+/**
  * Middleware to verify API key authentication
  *
  * Checks X-API-Key header against configured API_KEY environment variable.
@@ -34,8 +61,21 @@ function safeCompare(a, b) {
  * Uses constant-time comparison to prevent timing attacks.
  * @param {Object} config - Configuration object
  * @returns {Function} Express middleware function
+ * @throws {Error} If REQUIRE_AUTH is true but API_KEY is invalid
  */
 function createAuthMiddleware(config) {
+    // Validate API key configuration at middleware creation time
+    if (config.REQUIRE_AUTH) {
+        const validation = validateApiKey(config.API_KEY);
+        if (!validation.valid) {
+            throw new Error(
+                `Authentication is required but API key is invalid: ${validation.error}. ` +
+                    `Set a valid API_KEY environment variable (minimum ${MIN_API_KEY_LENGTH} characters) ` +
+                    `or disable authentication by setting REQUIRE_AUTH=false.`
+            );
+        }
+    }
+
     return function authenticateApiKey(req, res, next) {
         // Skip auth if not required (development)
         if (!config.REQUIRE_AUTH) {
@@ -55,4 +95,9 @@ function createAuthMiddleware(config) {
     };
 }
 
-module.exports = { createAuthMiddleware, safeCompare };
+module.exports = {
+    createAuthMiddleware,
+    safeCompare,
+    validateApiKey,
+    MIN_API_KEY_LENGTH,
+};
