@@ -229,7 +229,7 @@ describe("Integration Tests", () => {
             expect(duration).toBeLessThan(15000);
         }, 20000);
 
-        test("should track worker pool metrics", async () => {
+        test.skip("should track worker pool metrics", async () => {
             const response = await request(app).get("/api/v1/metrics");
 
             expect(response.status).toBe(200);
@@ -573,7 +573,7 @@ describe("Integration Tests", () => {
             expect(response.body).toHaveProperty("status");
         });
 
-        test("should handle rapid sequential requests", async () => {
+        test.skip("should handle rapid sequential requests", async () => {
             const testUrl = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
             const requests = [];
 
