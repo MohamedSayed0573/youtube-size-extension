@@ -275,7 +275,8 @@
 
     // Hook into SPA navigations with minimal overhead (no inline scripts)
     listenForSpaNavigations();
-    startUrlPoller(3000);
+    // Use 10s polling as safety fallback only - SPA events handle most cases
+    startUrlPoller(10000);
 
     // Kick off
     if (
