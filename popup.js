@@ -819,7 +819,7 @@
         /**
          *
          */
-        async function doFetch() {
+        const doFetch = async () => {
             try {
                 startStatusSpinner("Refreshing");
                 const resp = await requestBackgroundPrefetch(
@@ -971,7 +971,7 @@
                     );
                 }
             }
-        }
+        };
 
         // Auto-fetch if not fresh
         if (!isFreshGood) {

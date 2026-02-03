@@ -263,7 +263,8 @@ def run_ytdlp_dump_json(url: str, timeout_sec: int = 25):
     return obj, None, 0
 
 
-def _get_num(val):    """Safely convert a value to float, returning None on error.
+def _get_num(val):
+    """Safely convert a value to float, returning None on error.
     
     Args:
         val: Value to convert

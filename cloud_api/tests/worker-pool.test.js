@@ -1,7 +1,6 @@
 /**
  * Tests for Worker Pool and Circuit Breaker Integration
- *
- * @fileoverview Test suite for worker pool, circuit breaker, and their integration
+ * @file Test suite for worker pool, circuit breaker, and their integration
  * @author YouTube Size Extension Team
  */
 
