@@ -97,6 +97,73 @@ class WorkerPool extends EventEmitter {
     }
 
     /**
+     * Pre-warm the worker pool by ensuring workers are ready to handle tasks
+     * This helps avoid cold-start latency on first requests
+     * @async
+     * @param {number} [timeoutMs] - Maximum time to wait for warm-up
+     * @returns {Promise<{warmed: number, total: number}>} Warm-up result
+     */
+    async warmUp(timeoutMs = 5000) {
+        const startTime = Date.now();
+        let warmedCount = 0;
+
+        // Wait for all workers to be ready (not busy, responding)
+        const warmUpPromises = [];
+
+        for (const [workerId, workerInfo] of this.workers.entries()) {
+            if (workerInfo.busy) continue;
+
+            // Send a lightweight ping message to ensure worker is responsive
+            const warmUpPromise = new Promise((resolve) => {
+                const timeout = setTimeout(
+                    () => {
+                        resolve(false); // Worker didn't respond in time
+                    },
+                    Math.min(timeoutMs, 2000)
+                );
+
+                // Create a one-time handler for the warm-up response
+                const handler = (msg) => {
+                    if (msg && msg.warmUp === true) {
+                        clearTimeout(timeout);
+                        workerInfo.worker.off("message", handler);
+                        resolve(true);
+                    }
+                };
+
+                workerInfo.worker.on("message", handler);
+                workerInfo.worker.postMessage({ warmUp: true });
+            });
+
+            warmUpPromises.push(warmUpPromise);
+        }
+
+        // Wait for all warm-up attempts to complete or timeout
+        const results = await Promise.race([
+            Promise.all(warmUpPromises),
+            new Promise((resolve) =>
+                setTimeout(
+                    () => resolve(warmUpPromises.map(() => false)),
+                    timeoutMs - (Date.now() - startTime)
+                )
+            ),
+        ]);
+
+        warmedCount = results.filter(Boolean).length;
+
+        this.emit("poolWarmed", {
+            warmed: warmedCount,
+            total: this.workers.size,
+            durationMs: Date.now() - startTime,
+        });
+
+        return {
+            warmed: warmedCount,
+            total: this.workers.size,
+        };
+    }
+
+    /**
      * Create a new worker thread
      * @private
      * @returns {Object} Worker info object

@@ -400,6 +400,15 @@ async function startServer() {
         }
     }
 
+    // Pre-warm worker pool to avoid cold-start latency on first requests
+    logger.info("Warming up worker pool...");
+    try {
+        await workerPool.warmUp(5000);
+        logger.info("✓ Worker pool warmed up successfully");
+    } catch (err) {
+        logger.warn({ err: err.message }, "⚠ Worker pool warm-up incomplete");
+    }
+
     server = app.listen(CONFIG.PORT, "0.0.0.0", () => {
         const redisReady = getRedisReady();
         logger.info(

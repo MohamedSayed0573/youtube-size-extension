@@ -134,6 +134,12 @@ async function executeYtdlp(url, timeout, maxBuffer, retryAttempt) {
 // Listen for messages from main thread
 if (parentPort) {
     parentPort.on("message", async (task) => {
+        // Handle warm-up ping
+        if (task && task.warmUp === true) {
+            parentPort.postMessage({ warmUp: true });
+            return;
+        }
+
         const { url, timeout, maxBuffer, retryAttempt = 0 } = task;
 
         const result = await executeYtdlp(
