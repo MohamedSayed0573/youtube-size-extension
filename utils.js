@@ -16,6 +16,7 @@
  * the URL contains a video identifier (v param, /watch path, or /shorts path).
  * @param {string} url - The URL to validate
  * @returns {boolean} True if the URL is a valid YouTube video URL
+ * @throws {Error} Re-throws unexpected errors (not URL parsing errors)
  * @example
  *   isYouTubeUrl('https://youtube.com/watch?v=dQw4w9WgXcQ') // true
  *   isYouTubeUrl('https://example.com') // false
@@ -30,8 +31,13 @@ function isYouTubeUrl(url) {
                 u.host.includes("youtu.be") ||
                 /\/shorts\//.test(u.pathname))
         );
-    } catch (_) {
-        return false;
+    } catch (error) {
+        // TypeError is expected for malformed URLs - return false
+        if (error instanceof TypeError) {
+            return false;
+        }
+        // Re-throw unexpected errors (RangeError, system errors, etc.)
+        throw error;
     }
 }
 
