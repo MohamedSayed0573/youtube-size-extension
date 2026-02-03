@@ -42,6 +42,18 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Transfer .env.production file
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_IP }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: cloud_api/.env.production
+          target: /opt/ytdlp-api/
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -51,6 +63,12 @@ jobs:
           script: |
             # Navigate to app directory
             cd /opt/ytdlp-api
+            
+            # Rename .env.production to .env
+            mv .env.production .env
+            
+            # Ensure proper permissions
+            chmod 600 .env
             
             # Pull latest image
             sudo docker pull ${{ secrets.DOCKER_USERNAME }}/ytdlp-api:latest
