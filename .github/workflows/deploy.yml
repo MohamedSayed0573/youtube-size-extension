@@ -45,15 +45,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Transfer .env.production file
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_IP }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: cloud_api/.env.production
-          target: /opt/ytdlp-api/
-
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -64,8 +55,21 @@ jobs:
             # Navigate to app directory
             cd /opt/ytdlp-api
             
-            # Rename .env.production to .env
-            mv .env.production .env
+            # Create .env file from environment variables
+            cat > .env << 'EOF'
+            PORT=3000
+            NODE_ENV=production
+            REQUIRE_AUTH=true
+            API_KEY=${{ secrets.API_KEY }}
+            ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
+            RATE_LIMIT_WINDOW_MS=60000
+            RATE_LIMIT_MAX_REQUESTS=20
+            REDIS_ENABLED=${{ secrets.REDIS_ENABLED || 'false' }}
+            REDIS_URL=${{ secrets.REDIS_URL }}
+            YTDLP_TIMEOUT=25000
+            YTDLP_MAX_BUFFER=10485760
+            ENABLE_HEALTH_DETAILS=false
+            EOF
             
             # Ensure proper permissions
             chmod 600 .env
