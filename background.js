@@ -23,6 +23,9 @@ importScripts("utils.js");
 /** @constant {string} The native messaging host identifier */
 const HOST_NAME = "com.ytdlp.sizer";
 
+/** @constant {number} Maximum entries in tracking maps to prevent memory leaks */
+const MAX_MAP_SIZE = 500;
+
 // In-flight requests to avoid duplicate native host calls per video
 const inFlight = new Set();
 const CLEAR_BADGE_MS = 8000; // Clear badge after 8s
@@ -127,20 +130,52 @@ function getDurationHint(videoId) {
 }
 
 /**
- *
+ * Prunes expired entries from the durationHints map and enforces size limit
  */
 function pruneDurationHints() {
     try {
         const now = Date.now();
+        // Remove expired entries
         for (const [vid, rec] of durationHints.entries()) {
             const ts = rec && typeof rec.ts === "number" ? rec.ts : 0;
             if (!ts || now - ts > HINT_TTL_MS) {
-                try {
-                    durationHints.delete(vid);
-                } catch (_) {}
+                durationHints.delete(vid);
+            }
+        }
+        // Enforce size limit (LRU-style: remove oldest entries if over limit)
+        if (durationHints.size > MAX_MAP_SIZE) {
+            const entries = Array.from(durationHints.entries());
+            entries.sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
+            const toRemove = entries.slice(0, entries.length - MAX_MAP_SIZE);
+            for (const [vid] of toRemove) {
+                durationHints.delete(vid);
             }
         }
     } catch (_) {}
+}
+
+/**
+ * Prunes the lastFetchMs map to enforce size limit
+ */
+function pruneLastFetchMs() {
+    try {
+        if (lastFetchMs.size > MAX_MAP_SIZE) {
+            const entries = Array.from(lastFetchMs.entries());
+            entries.sort((a, b) => a[1] - b[1]); // Sort by timestamp ascending
+            const toRemove = entries.slice(0, entries.length - MAX_MAP_SIZE);
+            for (const [vid] of toRemove) {
+                lastFetchMs.delete(vid);
+            }
+        }
+    } catch (_) {}
+}
+
+/**
+ * Prunes all tracking maps to prevent unbounded memory growth
+ */
+function pruneAllMaps() {
+    pruneDurationHints();
+    pruneLastFetchMs();
 }
 
 // Badge spinner management per tab
@@ -409,31 +444,10 @@ function cacheGetAll() {
     return new Promise((resolve) => cacheArea.get(null, resolve));
 }
 
-// Dual-write helpers ensure popup/background remain in sync across Chrome versions
-/**
- *
- * @param items
- */
-async function cacheSetDual(items) {
-    try {
-        await cacheSet(items);
-    } catch (_) {}
-    try {
-        await chrome.storage.local.set(items);
-    } catch (_) {}
-}
-/**
- *
- * @param keys
- */
-async function cacheRemoveDual(keys) {
-    try {
-        await cacheRemove(keys);
-    } catch (_) {}
-    try {
-        await chrome.storage.local.remove(keys);
-    } catch (_) {}
-}
+// Single storage write - use primary cache area only to avoid race conditions
+// Note: Previously used dual-write to both session and local storage,
+// but this caused race conditions. Now we rely on cacheArea detection
+// at startup to pick the right storage and stick with it.
 
 // Validate that a cached entry actually contains some size data
 /**
@@ -626,7 +640,7 @@ async function prefetchForUrl(url, tabId, forced = false) {
         }
         if (msg && msg.ok) {
             const key = `sizeCache_${videoId}`;
-            await cacheSetDual({
+            await cacheSet({
                 [key]: {
                     timestamp: Date.now(),
                     human: msg.human || null,
@@ -747,7 +761,7 @@ async function prefetchExistingYouTubeTabs() {
 }
 
 chrome.runtime.onStartup.addListener(() => {
-    pruneDurationHints();
+    pruneAllMaps();
     prefetchExistingYouTubeTabs();
 });
 
@@ -776,9 +790,9 @@ async function cleanupOldCaches() {
                 keysToRemove.push(k);
             }
         }
-        if (keysToRemove.length) await cacheRemoveDual(keysToRemove);
-        // Also prune duration hints
-        pruneDurationHints();
+        if (keysToRemove.length) await cacheRemove(keysToRemove);
+        // Also prune all tracking maps
+        pruneAllMaps();
     } catch (_) {}
 }
 
