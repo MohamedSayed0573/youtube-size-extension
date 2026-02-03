@@ -69,7 +69,9 @@ const app = express();
 // ============================================
 
 const redisState = initializeRedis(CONFIG, logger);
-const { redisClient, redisReady } = redisState;
+const { redisClient } = redisState;
+// Use getter to always get current state
+const getRedisReady = () => redisState.redisReady;
 
 // ============================================
 // Worker Pool & Circuit Breaker Setup
@@ -298,7 +300,7 @@ const healthRouter = createHealthRoutes(
     CONFIG,
     workerPool,
     circuitBreaker,
-    { redisClient, redisReady },
+    { redisClient, getRedisReady },
     ytdlpPath,
     logger
 );
@@ -348,9 +350,26 @@ if (typeof module !== "undefined" && module.exports) {
     module.exports.redisClient = redisClient;
 }
 
-// Only start server if not in test mode
-if (CONFIG.NODE_ENV !== "test") {
+/**
+ * Start the server with proper async initialization
+ * Waits for Redis connection before accepting requests
+ */
+async function startServer() {
+    // Wait for Redis to connect (with timeout) before starting
+    if (CONFIG.REDIS_ENABLED) {
+        logger.info("Waiting for Redis connection...");
+        const connected = await redisState.waitForConnection(5000);
+        if (connected) {
+            logger.info("✓ Redis connected before server start");
+        } else {
+            logger.warn(
+                "⚠ Redis connection timeout - starting with memory fallback"
+            );
+        }
+    }
+
     server = app.listen(CONFIG.PORT, "0.0.0.0", () => {
+        const redisReady = getRedisReady();
         logger.info(
             {
                 service: "ytdlp-sizer-api",
@@ -415,5 +434,13 @@ if (CONFIG.NODE_ENV !== "test") {
         socket.on("close", () => {
             // Connection closed naturally
         });
+    });
+}
+
+// Only start server if not in test mode
+if (CONFIG.NODE_ENV !== "test") {
+    startServer().catch((err) => {
+        logger.fatal({ error: err.message }, "Failed to start server");
+        process.exit(1);
     });
 }

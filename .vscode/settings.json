@@ -38,5 +38,7 @@
   },
   "[jsonc]": {
     "editor.defaultFormatter": "vscode.json-language-features"
-  }
+  },
+  "workbench.activityBar.iconClickBehavior": "toggle",
+  "workbench.colorTheme": "Tokyo Night Storm"
 }

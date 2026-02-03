@@ -25,7 +25,7 @@ function createHealthRoutes(
     logger
 ) {
     const router = express.Router();
-    const { redisClient, redisReady } = redisState;
+    const { redisClient, getRedisReady } = redisState;
 
     /**
      * Root endpoint
@@ -69,7 +69,7 @@ function createHealthRoutes(
                 ok: true,
                 redis: "connected",
                 latency: `${latency}ms`,
-                ready: redisReady,
+                ready: getRedisReady(),
             });
         } catch (error) {
             logger.error({ error: error.message }, "Redis health check failed");
@@ -153,7 +153,7 @@ function createHealthRoutes(
                     },
                     redis: {
                         enabled: config.REDIS_ENABLED,
-                        connected: redisReady,
+                        connected: getRedisReady(),
                         url: config.REDIS_URL
                             ? config.REDIS_URL.replace(/:[^:@]*@/, ":***@")
                             : "not configured",
