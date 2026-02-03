@@ -10,6 +10,7 @@
  * - Executes yt-dlp as child process with timeout protection
  * - Returns JSON metadata or error message
  * - Automatic cleanup on completion
+ * - Defense-in-depth URL validation before execution
  *
  * Message Protocol:
  * Input: { url: string, timeout: number, maxBuffer: number, retryAttempt: number }
@@ -22,18 +23,28 @@
 const { parentPort } = require("worker_threads");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
+const { isValidYouTubeUrl } = require("./utils/ytdlp");
 
 const execFileAsync = promisify(execFile);
 
 /**
  * Execute yt-dlp with given parameters
- * @param {string} url - YouTube video URL
+ * @param {string} url - YouTube video URL (will be validated before execution)
  * @param {number} timeout - Timeout in milliseconds
  * @param {number} maxBuffer - Maximum buffer size for stdout/stderr
  * @param {number} retryAttempt - Current retry attempt number (for logging)
  * @returns {Promise<Object>} Result object with success flag and data/error
  */
 async function executeYtdlp(url, timeout, maxBuffer, retryAttempt) {
+    // Defense-in-depth: Validate URL even though main thread should have validated
+    if (!isValidYouTubeUrl(url)) {
+        return {
+            success: false,
+            error: "Invalid or unsafe YouTube URL",
+            code: "INVALID_URL",
+        };
+    }
+
     try {
         const args = [
             "-J",
