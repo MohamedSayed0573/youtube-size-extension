@@ -30,13 +30,14 @@ CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 CHROME_DIRS=(
   "${CONFIG_HOME}/google-chrome/NativeMessagingHosts"
   "${CONFIG_HOME}/chromium/NativeMessagingHosts"
+  "${CONFIG_HOME}/microsoft-edge/NativeMessagingHosts"
 )
 FIREFOX_DIR="${HOME}/.mozilla/native-messaging-hosts"
 
 MANIFEST_JSON_NAME="${HOST_NAME}.json"
 
 # Create manifest content (Chrome/Chromium)
-read -r -d '' MANIFEST_CONTENT <<JSON
+read -r -d '' MANIFEST_CONTENT <<JSON || true
 {
   "name": "${HOST_NAME}",
   "description": "Native host to run yt-dlp -F and return 480p/720p sizes.",
@@ -56,7 +57,7 @@ for dir in "${CHROME_DIRS[@]}"; do
 done
 
 # Create manifest content (Firefox)
-read -r -d '' FF_MANIFEST_CONTENT <<JSON
+read -r -d '' FF_MANIFEST_CONTENT <<JSON || true
 {
   "name": "${HOST_NAME}",
   "description": "Native host to run yt-dlp -F and return 480p/720p sizes.",

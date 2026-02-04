@@ -1,4 +1,4 @@
 {
-  "cloudApiUrl": "http://52.5.44.112",
+  "cloudApiUrl": "http://52.5.44.112:3000",
   "useCloud": true
 }
