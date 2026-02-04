@@ -64,7 +64,7 @@ jobs:
 
                       # Create .env file from environment variables
                       cat > .env << EOF
-                      PORT=3000
+                      PORT=80
                       NODE_ENV=production
                       REQUIRE_AUTH=true
                       API_KEY=${API_KEY}
@@ -89,14 +89,15 @@ jobs:
                       sudo docker rm ytdlp-api 2>/dev/null || true
 
                       # Run new container
+                      # Using host networking or mapping port 80
                       sudo docker run -d \
                         --name ytdlp-api \
                         --restart unless-stopped \
-                        -p 3000:3000 \
+                        -p 80:80 \
                         --env-file .env \
                         -v /opt/ytdlp-api/logs:/app/logs \
                         ${DOCKER_USERNAME}/ytdlp-api:latest
 
                       # Verify health
                       sleep 10
-                      curl -f http://localhost:3000/health || exit 1
+                      curl -f http://localhost:80/health || exit 1
