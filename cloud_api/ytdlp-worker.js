@@ -61,11 +61,15 @@ async function executeYtdlp(
 
     try {
         // Write cookies to temp file if provided
+        console.log(
+            `[Worker] Cookie status: received=${!!cookies}, type=${typeof cookies}, length=${cookies ? cookies.length : 0}`
+        );
         if (cookies && typeof cookies === "string" && cookies.length > 0) {
             // Generate unique filename to avoid race conditions
             const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             cookiesPath = path.join(os.tmpdir(), `yt-cookies-${uniqueId}.txt`);
             await writeFileAsync(cookiesPath, cookies, { mode: 0o600 });
+            console.log(`[Worker] Wrote cookies to: ${cookiesPath}`);
         }
 
         const args = [
