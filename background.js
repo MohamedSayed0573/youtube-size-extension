@@ -14,7 +14,7 @@
  * @version 0.2.0
  */
 
-/* global isYouTubeUrl, extractVideoId, humanizeBytes, humanizeDuration, Logger, getCacheKey, cacheHasAnySize, CACHE_KEY_PREFIX, callNativeHost */
+/* global isYouTubeUrl, extractVideoId, Logger, getCacheKey, cacheHasAnySize, callNativeHost, CACHE_KEY_PREFIX */
 /* eslint-disable no-inner-declarations */
 
 // Import shared utilities
@@ -27,7 +27,6 @@ const MAX_MAP_SIZE = 500;
 
 /** @constant {number} Prune maps every N insertions to prevent memory buildup */
 const PRUNE_INTERVAL = 50;
-
 /** @type {number} Counter to trigger periodic pruning */
 let insertionCounter = 0;
 
@@ -267,7 +266,8 @@ const tabBadgeTimers = new Map(); // tabId -> intervalId
 // Cross-browser Promise wrappers for tabs API (Firefox expects callbacks on chrome.*)
 /**
  *
- * @param queryInfo
+ * @param {Object} queryInfo - chrome.tabs.query parameters
+ * @returns {Promise<Array>} Promise resolving to tabs array
  */
 function tabsQuery(queryInfo) {
     return new Promise((resolve) => {
@@ -287,7 +287,8 @@ function tabsQuery(queryInfo) {
 
 /**
  *
- * @param tabId
+ * @param {number} tabId - Tab ID to retrieve
+ * @returns {Promise<Object|null>} Promise resolving to tab object or null
  */
 function tabsGet(tabId) {
     return new Promise((resolve) => {
@@ -380,8 +381,9 @@ function setBadgeCheck(tabId) {
 }
 
 /**
- *
- * @param tabId
+ * Clears the badge for a specific tab
+ * @param {number} tabId - The tab ID to clear
+ * @returns {void}
  */
 function clearBadge(tabId) {
     if (typeof chrome.action === "undefined" || typeof tabId !== "number") {
@@ -395,9 +397,10 @@ function clearBadge(tabId) {
 }
 
 /**
- *
- * @param url
- * @param tabId
+ * Ensures the badge state is correct for a given URL and tab
+ * @param {string} url - The current URL
+ * @param {number} tabId - The tab ID
+ * @returns {Promise<void>}
  */
 async function ensureBadgeForTab(url, tabId) {
     if (typeof tabId !== "number") return;
@@ -434,7 +437,8 @@ const defaultSettings = {
 let settings = { ...defaultSettings };
 
 /**
- *
+ * Calculates the TTL in milliseconds based on settings
+ * @returns {number} TTL in milliseconds
  */
 function getTTLms() {
     const ttl = parseInt(settings.ttlHours, 10);
@@ -444,7 +448,8 @@ function getTTLms() {
 }
 
 /**
- *
+ * Loads settings from storage
+ * @returns {Promise<void>}
  */
 async function loadSettings() {
     try {
@@ -489,35 +494,21 @@ try {
 // Shared utility functions (isYouTubeUrl, extractVideoId) are imported from utils.js
 
 /**
- *
- * @param keys
+ * Wraps chrome.storage.local.get in a Promise
+ * @param {string|string[]|Object} keys - Keys to retrieve
+ * @returns {Promise<Object>} Promise resolving to storage items
  */
 function storageGet(keys) {
     return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 }
 
-/**
- *
- * @param items
- */
-function storageSet(items) {
-    return new Promise((resolve) => chrome.storage.local.set(items, resolve));
-}
-
-/**
- *
- * @param keys
- */
-function storageRemove(keys) {
-    return new Promise((resolve) => chrome.storage.local.remove(keys, resolve));
-}
-
 // Prefer session storage for volatile video size caches (faster, no disk I/O),
 // fall back to local storage if session is unavailable.
 // Prefer session storage for volatile video size caches (faster, no disk I/O),
 // fall back to local storage if session is unavailable.
 /**
- *
+ * Determines the best storage area for cache (Session vs Local)
+ * @returns {Object} The chrome.storage area to use
  */
 function getCacheArea() {
     return chrome && chrome.storage && chrome.storage.session
@@ -525,28 +516,32 @@ function getCacheArea() {
         : chrome.storage.local;
 }
 /**
- *
- * @param keys
+ * Gets items from the cache area
+ * @param {string|string[]|Object} keys - Keys to retrieve
+ * @returns {Promise<Object>} Promise resolving to cached items
  */
 function cacheGet(keys) {
     return new Promise((resolve) => getCacheArea().get(keys, resolve));
 }
 /**
- *
- * @param items
+ * Sets items in the cache area
+ * @param {Object} items - Items to store
+ * @returns {Promise<void>} Promise resolving when set is complete
  */
 function cacheSet(items) {
     return new Promise((resolve) => getCacheArea().set(items, resolve));
 }
 /**
- *
- * @param keys
+ * Removes items from the cache area
+ * @param {string|string[]} keys - Keys to remove
+ * @returns {Promise<void>} Promise resolving when remove is complete
  */
 function cacheRemove(keys) {
     return new Promise((resolve) => getCacheArea().remove(keys, resolve));
 }
 /**
- *
+ * gets all items from the cache area
+ * @returns {Promise<Object>} Promise resolving to all cached items
  */
 function cacheGetAll() {
     return new Promise((resolve) => getCacheArea().get(null, resolve));
