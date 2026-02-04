@@ -13,7 +13,7 @@
  * - Defense-in-depth URL validation before execution
  *
  * Message Protocol:
- * Input: { url: string, timeout: number, maxBuffer: number, retryAttempt: number }
+ * Input: { url: string, timeout: number, maxBuffer: number, retryAttempt: number, cookies?: string }
  * Output: { success: true, data: Object } | { success: false, error: string, code?: string }
  * @file Worker thread for non-blocking yt-dlp execution
  * @author YouTube Size Extension Team
@@ -23,9 +23,14 @@
 const { parentPort } = require("worker_threads");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 const { isValidYouTubeUrl } = require("./utils/ytdlp");
 
 const execFileAsync = promisify(execFile);
+const writeFileAsync = promisify(fs.writeFile);
+const unlinkAsync = promisify(fs.unlink);
 
 /**
  * Execute yt-dlp with given parameters
@@ -33,9 +38,18 @@ const execFileAsync = promisify(execFile);
  * @param {number} timeout - Timeout in milliseconds
  * @param {number} maxBuffer - Maximum buffer size for stdout/stderr
  * @param {number} retryAttempt - Current retry attempt number (for logging)
+ * @param {string|null} cookies - Optional cookies in Netscape format for authentication
  * @returns {Promise<Object>} Result object with success flag and data/error
  */
-async function executeYtdlp(url, timeout, maxBuffer, retryAttempt) {
+async function executeYtdlp(
+    url,
+    timeout,
+    maxBuffer,
+    retryAttempt,
+    cookies = null
+) {
+    let cookiesPath = null;
+
     // Defense-in-depth: Validate URL even though main thread should have validated
     if (!isValidYouTubeUrl(url)) {
         return {
@@ -46,15 +60,29 @@ async function executeYtdlp(url, timeout, maxBuffer, retryAttempt) {
     }
 
     try {
+        // Write cookies to temp file if provided
+        if (cookies && typeof cookies === "string" && cookies.length > 0) {
+            // Generate unique filename to avoid race conditions
+            const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            cookiesPath = path.join(os.tmpdir(), `yt-cookies-${uniqueId}.txt`);
+            await writeFileAsync(cookiesPath, cookies, { mode: 0o600 });
+        }
+
         const args = [
             "-J",
             "--skip-download",
             "--no-playlist",
             "--js-runtimes",
             "node",
-            "--",
-            url,
         ];
+
+        // Add cookies flag if we have a cookies file
+        if (cookiesPath) {
+            args.push("--cookies", cookiesPath);
+        }
+
+        // Add URL last (after -- to prevent URL from being parsed as option)
+        args.push("--", url);
 
         const { stdout, stderr } = await execFileAsync("yt-dlp", args, {
             timeout,
@@ -129,6 +157,18 @@ async function executeYtdlp(url, timeout, maxBuffer, retryAttempt) {
             code: errorCode,
             stderr: stderr || undefined,
         };
+    } finally {
+        // Clean up temp cookies file
+        if (cookiesPath) {
+            try {
+                await unlinkAsync(cookiesPath);
+            } catch (cleanupError) {
+                // Ignore cleanup errors - file may already be deleted or not exist
+                console.warn(
+                    `[Worker] Failed to cleanup cookies file: ${cleanupError.message}`
+                );
+            }
+        }
     }
 }
 
@@ -141,13 +181,20 @@ if (parentPort) {
             return;
         }
 
-        const { url, timeout, maxBuffer, retryAttempt = 0 } = task;
+        const {
+            url,
+            timeout,
+            maxBuffer,
+            retryAttempt = 0,
+            cookies = null,
+        } = task;
 
         const result = await executeYtdlp(
             url,
             timeout,
             maxBuffer,
-            retryAttempt
+            retryAttempt,
+            cookies
         );
         parentPort.postMessage(result);
     });

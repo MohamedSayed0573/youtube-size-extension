@@ -114,7 +114,7 @@ function createApiRoutes(
     router.post("/size", rateLimiter, authMiddleware, async (req, res) => {
         const startTime = Date.now();
         try {
-            const { url, duration_hint } = req.body;
+            const { url, duration_hint, cookies } = req.body;
 
             Sentry.addBreadcrumb({
                 category: "api",
@@ -123,7 +123,10 @@ function createApiRoutes(
                 level: "info",
             });
 
-            req.log.info({ url, duration_hint }, "Processing size request");
+            req.log.info(
+                { url, hasCookies: !!cookies },
+                "Processing size request"
+            );
 
             // Validate URL is provided
             if (!url) {
@@ -162,12 +165,15 @@ function createApiRoutes(
             }
 
             // Extract metadata using yt-dlp (with retries)
+            // Pass cookies if provided to bypass YouTube bot detection
             const meta = await extractInfo(
                 url,
                 workerPool,
                 circuitBreaker,
                 config,
-                logger
+                logger,
+                2, // maxRetries
+                cookies // cookies from browser extension
             );
 
             // Compute sizes

@@ -170,6 +170,7 @@ function sizeFromFormat(fmt, durationSec) {
  * @param {Object} config - Configuration object
  * @param {Object} logger - Logger instance
  * @param {number} [maxRetries] - Maximum number of retry attempts
+ * @param {string|null} [cookies] - Optional cookies in Netscape format for authentication
  * @returns {Promise<Object>} Parsed JSON metadata from yt-dlp
  * @throws {Error} If yt-dlp fails after all retries or circuit is open
  */
@@ -179,7 +180,8 @@ async function extractInfo(
     circuitBreaker,
     config,
     logger,
-    maxRetries = 2
+    maxRetries = 2,
+    cookies = null
 ) {
     let lastError;
 
@@ -192,6 +194,7 @@ async function extractInfo(
                     timeout: config.YTDLP_TIMEOUT,
                     maxBuffer: config.YTDLP_MAX_BUFFER,
                     retryAttempt: attempt,
+                    cookies, // Pass cookies for YouTube authentication
                 });
             });
 
