@@ -332,6 +332,7 @@ class WorkerPool extends EventEmitter {
      * @param {number} task.timeout - Timeout in ms
      * @param {number} task.maxBuffer - Max buffer size
      * @param {number} [task.retryAttempt] - Retry attempt number
+     * @param {string|null} [task.cookies] - Cookies in Netscape format for authentication
      * @returns {Promise<Object>} yt-dlp metadata
      * @throws {Error} If task fails or times out
      */
@@ -435,6 +436,7 @@ class WorkerPool extends EventEmitter {
             timeout: taskInfo.timeout,
             maxBuffer: taskInfo.maxBuffer,
             retryAttempt: taskInfo.retryAttempt || 0,
+            cookies: taskInfo.cookies || null,
         });
     }
 
