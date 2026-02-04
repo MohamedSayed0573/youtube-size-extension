@@ -84,6 +84,11 @@ async function executeYtdlp(
         // Add URL last (after -- to prevent URL from being parsed as option)
         args.push("--", url);
 
+        // Debug: log the full command for troubleshooting
+        console.log(
+            `[Worker] Executing: yt-dlp ${args.join(" ")} (cookies: ${cookiesPath ? "yes" : "no"})`
+        );
+
         const { stdout, stderr } = await execFileAsync("yt-dlp", args, {
             timeout,
             maxBuffer,
