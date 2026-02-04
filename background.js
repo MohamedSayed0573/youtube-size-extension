@@ -9,7 +9,7 @@
  * - Badge indicators and status updates
  * - Duration hints collection from content script
  * @file Background service worker for video size management
- * @requires utils.js - Shared utility functions
+ * @see utils.js - Shared utility functions
  * @author YouTube Size Extension Team
  * @version 0.2.0
  */
