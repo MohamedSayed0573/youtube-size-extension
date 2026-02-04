@@ -100,29 +100,42 @@ async function extractYouTubeCookies() {
 
         const allResults = await Promise.all(cookiePromises);
 
-        // Merge and deduplicate cookies by name
+        // Only extract essential authentication cookies (principle of least privilege)
+        // These are the cookies yt-dlp needs to authenticate as a logged-in user
+        const AUTH_COOKIES = new Set([
+            "SID",
+            "HSID",
+            "SSID",
+            "APISID",
+            "SAPISID",
+            "LOGIN_INFO",
+            "__Secure-1PSID",
+            "__Secure-3PSID",
+            "__Secure-1PAPISID",
+            "__Secure-3PAPISID",
+        ]);
+
+        // Merge and deduplicate cookies by name, filtering for auth cookies only
         const cookieMap = new Map();
         for (const result of allResults) {
             for (const c of result) {
-                // Use domain+name as unique key to avoid duplicates
-                const key = `${c.domain}|${c.name}`;
-                if (!cookieMap.has(key)) {
-                    cookieMap.set(key, c);
+                // Only include essential authentication cookies
+                if (AUTH_COOKIES.has(c.name)) {
+                    const key = `${c.domain}|${c.name}`;
+                    if (!cookieMap.has(key)) {
+                        cookieMap.set(key, c);
+                    }
                 }
             }
         }
 
         const cookies = Array.from(cookieMap.values());
         Logger.info(
-            `Extracted ${cookies.length} unique YouTube cookies from ${allResults.flat().length} total`
+            `Extracted ${cookies.length} YouTube authentication cookies`
         );
 
-        // Log cookie names for debugging (not values for security)
-        const cookieNames = cookies.map((c) => c.name).join(", ");
-        Logger.info(`Cookie names: ${cookieNames.substring(0, 200)}...`);
-
         if (!cookies || cookies.length === 0) {
-            Logger.info("No YouTube cookies found");
+            Logger.info("No YouTube authentication cookies found");
             return null;
         }
 
