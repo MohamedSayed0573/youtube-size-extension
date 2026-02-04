@@ -911,39 +911,10 @@
                         noteEl.textContent = "Just updated";
                     }
                 } else if (msg.type === "sizeCacheFailed") {
-                    // Stop spinner and attempt direct fetch fallback to avoid persistent N/A
+                    // Stop spinner; background already attempted cloud/native paths.
                     stopStatusSpinner();
                     statusEl.style.display = "none";
-                    try {
-                        const msg2 = await callNativeHost(
-                            currentUrl,
-                            currentDurationSec || undefined
-                        );
-                        if (msg2 && msg2.ok) {
-                            const dur =
-                                msg2.human && msg2.human.duration
-                                    ? msg2.human.duration
-                                    : null;
-                            await writeCache(currentVideoId, {
-                                timestamp: Date.now(),
-                                human: msg2.human || null,
-                                bytes: msg2.bytes || null,
-                            });
-                            showResult(
-                                msg2.human,
-                                msg2.bytes,
-                                "Just updated",
-                                dur
-                            );
-                            noteEl.textContent = "Just updated";
-                            return;
-                        }
-                    } catch (e) {
-                        Logger.warn(
-                            "Fallback direct host call failed in failure handler",
-                            e
-                        );
-                    }
+                    // Avoid popup-side native host fallback (forbidden in Chrome/Edge)
                     noteEl.textContent =
                         "Refresh failed" +
                         (msg && msg.error ? `: ${msg.error}` : "");
