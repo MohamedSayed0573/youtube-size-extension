@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     dumb-init \
+    ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 
 # Install yt-dlp (ARG forces cache bust on update)
@@ -32,8 +33,10 @@ ARG YTDLP_VERSION=latest
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
   && chmod a+rx /usr/local/bin/yt-dlp
 
-# Create non-root user
-RUN groupadd -r nodejs && useradd -r -g nodejs nodejs
+# Create non-root user with home directory for yt-dlp cache
+RUN groupadd -r nodejs && useradd -r -g nodejs -m -d /home/nodejs nodejs \
+  && mkdir -p /home/nodejs/.cache/yt-dlp \
+  && chown -R nodejs:nodejs /home/nodejs
 
 WORKDIR /app
 
