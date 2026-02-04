@@ -6,10 +6,11 @@
 const express = require("express");
 
 /**
- *
- * @param circuitBreaker
- * @param logger
- * @param authMiddleware
+ * Create admin routes for system management
+ * @param {Object} circuitBreaker - Circuit breaker instance
+ * @param {import('pino').Logger} logger - Pino logger instance
+ * @param {import('express').RequestHandler} authMiddleware - Authentication middleware
+ * @returns {import('express').Router} Express router instance
  */
 function createAdminRoutes(circuitBreaker, logger, authMiddleware) {
     const router = express.Router();

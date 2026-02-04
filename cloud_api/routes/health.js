@@ -8,13 +8,14 @@ const os = require("os");
 const { formatUptime } = require("../utils/ytdlp");
 
 /**
- *
- * @param config
- * @param workerPool
- * @param circuitBreaker
- * @param redisState
- * @param ytdlpPath
- * @param logger
+ * Create health check routes
+ * @param {Object} config - Server configuration object
+ * @param {Object} workerPool - Worker pool instance
+ * @param {Object} circuitBreaker - Circuit breaker instance
+ * @param {Object} redisState - Redis state object with client and getRedisReady
+ * @param {string} ytdlpPath - Path to yt-dlp executable
+ * @param {import('pino').Logger} logger - Pino logger instance
+ * @returns {import('express').Router} Express router instance
  */
 function createHealthRoutes(
     config,
@@ -73,6 +74,105 @@ function createHealthRoutes(
             });
         } catch (error) {
             logger.error({ error: error.message }, "Redis health check failed");
+            res.status(503).json({
+                ok: false,
+                redis: "error",
+                error: error.message,
+            });
+        }
+    });
+
+    /**
+     * Detailed Redis health check endpoint with comprehensive diagnostics
+     */
+    router.get("/redis/detailed", async (req, res) => {
+        if (!config.REDIS_ENABLED) {
+            return res.status(200).json({
+                ok: true,
+                redis: "disabled",
+                message: "Redis is not enabled",
+            });
+        }
+
+        if (!redisClient) {
+            return res.status(503).json({
+                ok: false,
+                redis: "not_configured",
+                message: "Redis client not initialized",
+            });
+        }
+
+        try {
+            const start = Date.now();
+            await redisClient.ping();
+            const latency = Date.now() - start;
+
+            // Get Redis server info
+            const infoRaw = await redisClient.info();
+            const info = {};
+
+            // Parse INFO response into sections
+            let currentSection = "general";
+            for (const line of infoRaw.split("\n")) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith("#")) {
+                    currentSection = trimmed.slice(2).toLowerCase();
+                    info[currentSection] = {};
+                } else if (trimmed.includes(":")) {
+                    const [key, value] = trimmed.split(":");
+                    if (!info[currentSection]) info[currentSection] = {};
+                    info[currentSection][key] = value;
+                }
+            }
+
+            // Get key count from dbsize
+            const dbsize = await redisClient.dbSize();
+
+            res.json({
+                ok: true,
+                redis: "connected",
+                ready: getRedisReady(),
+                latency: `${latency}ms`,
+                server: {
+                    version: info.server?.redis_version || "unknown",
+                    mode: info.server?.redis_mode || "standalone",
+                    os: info.server?.os || "unknown",
+                    uptimeSeconds:
+                        parseInt(info.server?.uptime_in_seconds) || 0,
+                    uptimeDays: parseInt(info.server?.uptime_in_days) || 0,
+                },
+                memory: {
+                    used: info.memory?.used_memory_human || "unknown",
+                    peak: info.memory?.used_memory_peak_human || "unknown",
+                    rss: info.memory?.used_memory_rss_human || "unknown",
+                    fragmentation:
+                        parseFloat(info.memory?.mem_fragmentation_ratio) || 0,
+                },
+                clients: {
+                    connected: parseInt(info.clients?.connected_clients) || 0,
+                    blocked: parseInt(info.clients?.blocked_clients) || 0,
+                    maxInputBuffer:
+                        info.clients?.client_recent_max_input_buffer || "0",
+                    maxOutputBuffer:
+                        info.clients?.client_recent_max_output_buffer || "0",
+                },
+                stats: {
+                    totalConnections:
+                        parseInt(info.stats?.total_connections_received) || 0,
+                    totalCommands:
+                        parseInt(info.stats?.total_commands_processed) || 0,
+                    opsPerSecond:
+                        parseInt(info.stats?.instantaneous_ops_per_sec) || 0,
+                    keyspace: {
+                        keys: dbsize,
+                    },
+                },
+            });
+        } catch (error) {
+            logger.error(
+                { error: error.message },
+                "Detailed Redis health check failed"
+            );
             res.status(503).json({
                 ok: false,
                 redis: "error",

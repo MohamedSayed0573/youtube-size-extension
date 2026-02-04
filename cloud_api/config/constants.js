@@ -10,6 +10,7 @@ const TIMEOUTS = {
     WORKER_IDLE: 120000, // 2 minutes worker idle timeout
     CIRCUIT_COOLDOWN: 60000, // 1 minute circuit breaker cooldown
     SHUTDOWN_GRACE: 10000, // 10 seconds graceful shutdown
+    WARMUP_WORKER_TIMEOUT: 2000, // 2 seconds for worker warm-up ping
 };
 
 const LIMITS = {
@@ -21,6 +22,7 @@ const LIMITS = {
     CIRCUIT_FAILURE_THRESHOLD: 5, // Failures before circuit opens
     CIRCUIT_SUCCESS_THRESHOLD: 2, // Successes to close circuit
     CIRCUIT_VOLUME_THRESHOLD: 10, // Min requests before evaluation
+    REQUEST_ID_MAX_LENGTH: 64, // Maximum length for request IDs
 };
 
 const VIDEO_FORMAT_IDS = {

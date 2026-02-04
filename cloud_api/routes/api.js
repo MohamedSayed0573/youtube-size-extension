@@ -12,13 +12,14 @@ const {
 } = require("../utils/ytdlp");
 
 /**
- *
- * @param config
- * @param workerPool
- * @param circuitBreaker
- * @param logger
- * @param authMiddleware
- * @param rateLimiter
+ * Create API routes for video size extraction
+ * @param {Object} config - Server configuration object
+ * @param {Object} workerPool - Worker pool instance
+ * @param {Object} circuitBreaker - Circuit breaker instance
+ * @param {import('pino').Logger} logger - Pino logger instance
+ * @param {import('express').RequestHandler} authMiddleware - Authentication middleware
+ * @param {import('express').RequestHandler} rateLimiter - Rate limiting middleware
+ * @returns {import('express').Router} Express router instance
  */
 function createApiRoutes(
     config,
@@ -178,6 +179,8 @@ function createApiRoutes(
                 "Request completed successfully"
             );
 
+            // Set cache headers for client-side caching
+            res.setHeader("Cache-Control", "private, max-age=3600"); // 1 hour cache
             res.json(result);
         } catch (error) {
             const duration = Date.now() - startTime;

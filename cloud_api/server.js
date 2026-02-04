@@ -11,6 +11,7 @@ const Sentry = require("@sentry/node");
 const express = require("express");
 const cors = require("cors");
 const compression = require("compression");
+const helmet = require("helmet");
 const pino = require("pino");
 
 // Config modules
@@ -291,6 +292,14 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 // Request ID and logging
 app.use(requestIdMiddleware(logger));
 app.use(requestLoggingMiddleware(activeConnections, () => isShuttingDown));
+
+// Security headers (helmet)
+app.use(
+    helmet({
+        contentSecurityPolicy: false, // Disable CSP for API server
+        crossOriginEmbedderPolicy: false, // Allow embedding for CORS
+    })
+);
 
 // Gzip compression
 app.use(

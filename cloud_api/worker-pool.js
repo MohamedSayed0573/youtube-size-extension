@@ -19,6 +19,7 @@
 const { Worker } = require("worker_threads");
 const EventEmitter = require("events");
 const path = require("path");
+const { TIMEOUTS } = require("./config/constants");
 
 /**
  * Worker Pool Manager
@@ -119,7 +120,7 @@ class WorkerPool extends EventEmitter {
                     () => {
                         resolve(false); // Worker didn't respond in time
                     },
-                    Math.min(timeoutMs, 2000)
+                    Math.min(timeoutMs, TIMEOUTS.WARMUP_WORKER_TIMEOUT)
                 );
 
                 // Create a one-time handler for the warm-up response

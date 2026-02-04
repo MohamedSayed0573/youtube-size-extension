@@ -7,8 +7,8 @@ const Sentry = require("@sentry/node");
 
 /**
  * 404 Not Found handler
- * @param req
- * @param res
+ * @param {import('express').Request} req - Express request object
+ * @param {import('express').Response} res - Express response object
  */
 function notFoundHandler(req, res) {
     res.status(404).json({
@@ -30,7 +30,8 @@ function notFoundHandler(req, res) {
 /**
  * Global error handler
  * Must be registered after Sentry error handler
- * @param logger
+ * @param {import('pino').Logger} logger - Pino logger instance
+ * @returns {import('express').ErrorRequestHandler} Express error middleware function
  */
 function errorHandler(logger) {
     return (err, req, res, _next) => {

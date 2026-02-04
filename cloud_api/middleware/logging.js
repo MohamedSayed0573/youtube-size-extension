@@ -4,11 +4,13 @@
  */
 
 const Sentry = require("@sentry/node");
+const { LIMITS } = require("../config/constants");
 
 /**
  * Request ID middleware for distributed tracing
  * Generates or extracts correlation ID for tracking requests across services
- * @param logger
+ * @param {import('pino').Logger} logger - Pino logger instance
+ * @returns {import('express').RequestHandler} Express middleware function
  */
 function requestIdMiddleware(logger) {
     return (req, res, next) => {
@@ -18,8 +20,10 @@ function requestIdMiddleware(logger) {
             req.headers["x-correlation-id"] ||
             `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        // Sanitize Request ID to prevent log injection
-        req.requestId = requestId.replace(/[^a-zA-Z0-9_-]/gu, "");
+        // Sanitize Request ID to prevent log injection and limit length
+        req.requestId = requestId
+            .replace(/[^a-zA-Z0-9_-]/gu, "")
+            .slice(0, LIMITS.REQUEST_ID_MAX_LENGTH);
         res.setHeader("X-Request-ID", req.requestId);
 
         // Add to logger context
@@ -32,8 +36,9 @@ function requestIdMiddleware(logger) {
 /**
  * Request/Response logging middleware
  * Logs all incoming requests and outgoing responses with timing information
- * @param activeConnections
- * @param isShuttingDown
+ * @param {Set<string>} activeConnections - Set to track active connection IDs
+ * @param {() => boolean} isShuttingDown - Function that returns true if server is shutting down
+ * @returns {import('express').RequestHandler} Express middleware function
  */
 function requestLoggingMiddleware(activeConnections, isShuttingDown) {
     return (req, res, next) => {
