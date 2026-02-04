@@ -66,7 +66,11 @@ function delay(ms) {
  *   console.log(result.human.s720p); // "45.32 MB"
  */
 async function callCloudApi(url, durationHint) {
-    const base = "http://52.5.44.112"; // Hardcoded Cloud API server
+    const base =
+        settings && typeof settings.cloudApiUrl === "string"
+            ? settings.cloudApiUrl.trim()
+            : "";
+    if (!base) throw new Error("Cloud API URL not configured");
     const endpoint = base;
     const ac = new AbortController();
     const id = setTimeout(() => {
@@ -423,8 +427,8 @@ const defaultSettings = {
     ttlHours: 24,
     showBadge: true,
     showLength: true,
-    useCloud: false,
-
+    useCloud: true,
+    cloudApiUrl: "",
     resolutions: ["480p", "720p", "1080p", "1440p"],
 };
 let settings = { ...defaultSettings };
@@ -618,8 +622,13 @@ async function prefetchForUrl(url, tabId, forced = false) {
 
         const durationHint = getDurationHint(videoId);
         let msg = null;
-        // Cloud API is now hardcoded; always prefer it if useCloud is enabled
-        const tryCloudFirst = !!(settings && settings.useCloud);
+        // Cloud API URL is configured in config.json (not user-editable)
+        const tryCloudFirst = !!(
+            settings &&
+            settings.useCloud &&
+            typeof settings.cloudApiUrl === "string" &&
+            settings.cloudApiUrl.trim()
+        );
         try {
             if (tryCloudFirst) {
                 msg = await callCloudApi(url, durationHint);
