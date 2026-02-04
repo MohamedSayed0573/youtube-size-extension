@@ -7,7 +7,6 @@
  * - Badge display settings (show/hide status indicators)
  * - Video length display toggle
  * - Cloud API settings (enable/disable cloud service)
- * - Cloud API URL configuration
  * - Resolution selection (which resolutions to show in popup)
  *
  * Settings are persisted to chrome.storage.local and immediately affect
@@ -26,7 +25,7 @@
         showBadge: true,
         showLength: true,
         useCloud: true,
-        cloudApiUrl: "",
+
         resolutions: ["480p", "720p", "1080p", "1440p"],
     };
 
@@ -124,9 +123,7 @@
             if (document.getElementById("useCloud")) {
                 $("useCloud").checked = !!cfg.useCloud;
             }
-            if (document.getElementById("cloudApiUrl")) {
-                $("cloudApiUrl").value = cfg.cloudApiUrl || "";
-            }
+
             setResCheckboxes(cfg.resolutions || defaultSettings.resolutions);
         } catch (e) {
             Logger.warn("Failed to load settings in options", e);
@@ -154,7 +151,7 @@
             showBadge: !!$("showBadge").checked,
             showLength: !!$("showLength")?.checked,
             useCloud: !!$("useCloud")?.checked,
-            cloudApiUrl: String($("cloudApiUrl")?.value || "").trim(),
+
             resolutions: selected,
         };
         const st = $("status");
