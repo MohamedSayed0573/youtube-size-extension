@@ -98,31 +98,38 @@
         <div class="section">
             <div class="row">
                 <label>
-                    <input type="checkbox" id="autoPrefetch" />
+                    <input type="checkbox" id="autoPrefetch" checked />
                     Auto prefetch on YouTube pages
                 </label>
             </div>
             <div class="row">
                 <label for="ttlHours">Cache TTL (hours)</label>
-                <input type="number" id="ttlHours" min="1" max="48" step="1" />
+                <input
+                    type="number"
+                    id="ttlHours"
+                    min="1"
+                    max="48"
+                    step="1"
+                    value="24"
+                />
             </div>
             <div class="row">
                 <label>
-                    <input type="checkbox" id="showBadge" />
+                    <input type="checkbox" id="showBadge" checked />
                     Show action badge during prefetch
                 </label>
             </div>
 
             <div class="row">
                 <label>
-                    <input type="checkbox" id="useCloud" />
+                    <input type="checkbox" id="useCloud" checked />
                     Use cloud service (no native host required)
                 </label>
             </div>
 
             <div class="row">
                 <label>
-                    <input type="checkbox" id="showLength" />
+                    <input type="checkbox" id="showLength" checked />
                     Show length in popup
                 </label>
             </div>
@@ -132,10 +139,20 @@
                 <label><input type="checkbox" id="res_144" /> 144p</label>
                 <label><input type="checkbox" id="res_240" /> 240p</label>
                 <label><input type="checkbox" id="res_360" /> 360p</label>
-                <label><input type="checkbox" id="res_480" /> 480p</label>
-                <label><input type="checkbox" id="res_720" /> 720p</label>
-                <label><input type="checkbox" id="res_1080" /> 1080p</label>
-                <label><input type="checkbox" id="res_1440" /> 1440p</label>
+                <label
+                    ><input type="checkbox" id="res_480" checked /> 480p</label
+                >
+                <label
+                    ><input type="checkbox" id="res_720" checked /> 720p</label
+                >
+                <label
+                    ><input type="checkbox" id="res_1080" checked />
+                    1080p</label
+                >
+                <label
+                    ><input type="checkbox" id="res_1440" checked />
+                    1440p</label
+                >
             </div>
             <div class="desc">Defaults: 480p, 720p, 1080p, 1440p</div>
 
