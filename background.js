@@ -52,13 +52,74 @@ async function extractYouTubeCookies() {
             return null;
         }
 
-        const cookies = await new Promise((resolve) => {
-            chrome.cookies.getAll({ domain: ".youtube.com" }, (result) => {
-                const _e = chrome && chrome.runtime && chrome.runtime.lastError;
-                void _e; // Swallow error
-                resolve(result || []);
-            });
-        });
+        // Query cookies for multiple YouTube domains
+        const cookiePromises = [
+            new Promise((resolve) => {
+                chrome.cookies.getAll({ domain: ".youtube.com" }, (result) => {
+                    const _e =
+                        chrome && chrome.runtime && chrome.runtime.lastError;
+                    void _e;
+                    resolve(result || []);
+                });
+            }),
+            new Promise((resolve) => {
+                chrome.cookies.getAll({ domain: "youtube.com" }, (result) => {
+                    const _e =
+                        chrome && chrome.runtime && chrome.runtime.lastError;
+                    void _e;
+                    resolve(result || []);
+                });
+            }),
+            new Promise((resolve) => {
+                chrome.cookies.getAll(
+                    { domain: "www.youtube.com" },
+                    (result) => {
+                        const _e =
+                            chrome &&
+                            chrome.runtime &&
+                            chrome.runtime.lastError;
+                        void _e;
+                        resolve(result || []);
+                    }
+                );
+            }),
+            new Promise((resolve) => {
+                chrome.cookies.getAll(
+                    { url: "https://www.youtube.com" },
+                    (result) => {
+                        const _e =
+                            chrome &&
+                            chrome.runtime &&
+                            chrome.runtime.lastError;
+                        void _e;
+                        resolve(result || []);
+                    }
+                );
+            }),
+        ];
+
+        const allResults = await Promise.all(cookiePromises);
+
+        // Merge and deduplicate cookies by name
+        const cookieMap = new Map();
+        for (const result of allResults) {
+            for (const c of result) {
+                // Use domain+name as unique key to avoid duplicates
+                const key = `${c.domain}|${c.name}`;
+                if (!cookieMap.has(key)) {
+                    cookieMap.set(key, c);
+                }
+            }
+        }
+
+        const cookies = Array.from(cookieMap.values());
+        Logger.info(
+            `Extracted ${cookies.length} unique YouTube cookies from ${allResults.flat().length} total`
+        );
+
+        // Log cookie names for debugging (not values for security)
+        const cookieNames = cookies.map((c) => c.name).join(", ");
+        Logger.info(`Cookie names: ${cookieNames.substring(0, 200)}...`);
 
         if (!cookies || cookies.length === 0) {
             Logger.info("No YouTube cookies found");
@@ -138,7 +199,7 @@ async function callCloudApi(url, durationHint) {
         } catch (e) {
             Logger.warn("Abort failed", e);
         }
-    }, 25000);
+    }, 35000);
     try {
         const body = { url };
         if (
