@@ -34,6 +34,8 @@ jobs:
                   tags: |
                       ${{ secrets.DOCKER_USERNAME }}/ytdlp-api:latest
                       ${{ secrets.DOCKER_USERNAME }}/ytdlp-api:${{ github.sha }}
+                  build-args: |
+                      YTDLP_VERSION=${{ github.run_id }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
 
