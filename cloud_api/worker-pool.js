@@ -10,7 +10,6 @@
  * - Queue management with priority support
  * - Automatic worker recycling after max tasks
  * - Graceful shutdown handling
- * - Integration with circuit breaker
  * @file Worker pool for non-blocking yt-dlp execution
  * @author YouTube Size Extension Team
  * @version 2.0.0

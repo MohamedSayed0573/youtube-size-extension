@@ -48,23 +48,6 @@ jest.mock("../worker-pool.js", () => {
     };
 });
 
-// Mock CircuitBreaker to ensure happy path
-jest.mock("../circuit-breaker.js", () => {
-    return {
-        CircuitBreaker: class MockCircuitBreaker {
-            constructor() {}
-            async execute(fn) {
-                return fn(); // Pass through
-            }
-            getStatus() {
-                return { state: "CLOSED" };
-            }
-            reset() {}
-            on(event, handler) {}
-        },
-    };
-});
-
 // Import app after setting environment
 const app = require("../server.js");
 
@@ -75,12 +58,6 @@ describe("Cloud API Server", () => {
         }
     });
 
-    // Reset circuit breaker before each test to ensure isolation
-    beforeEach(() => {
-        if (app.circuitBreaker) {
-            app.circuitBreaker.reset();
-        }
-    });
     describe("Health Endpoints", () => {
         test("GET / should return service info", async () => {
             const response = await request(app).get("/");

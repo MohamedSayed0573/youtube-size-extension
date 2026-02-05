@@ -15,7 +15,6 @@ const {
  * Create API routes for video size extraction
  * @param {Object} config - Server configuration object
  * @param {Object} workerPool - Worker pool instance
- * @param {Object} circuitBreaker - Circuit breaker instance
  * @param {import('pino').Logger} logger - Pino logger instance
  * @param {import('express').RequestHandler} authMiddleware - Authentication middleware
  * @param {import('express').RequestHandler} rateLimiter - Rate limiting middleware
@@ -24,7 +23,6 @@ const {
 function createApiRoutes(
     config,
     workerPool,
-    circuitBreaker,
     logger,
     authMiddleware,
     rateLimiter
@@ -44,16 +42,11 @@ function createApiRoutes(
                     "GET /": "Root endpoint with basic info",
                     "GET /health": "Health check with system metrics",
                     "GET /health/redis": "Redis connectivity check",
-                    "GET /api/v1/metrics":
-                        "Worker pool and circuit breaker metrics",
+                    "GET /api/v1/metrics": "Worker pool metrics",
                     "GET /api/v1/openapi": "OpenAPI 3.0 specification",
                 },
                 api: {
                     "POST /api/v1/size": "Extract video size information",
-                },
-                admin: {
-                    "POST /api/v1/admin/circuit-breaker/reset":
-                        "Reset circuit breaker (requires auth)",
                 },
             },
             authentication: config.REQUIRE_AUTH
@@ -62,7 +55,6 @@ function createApiRoutes(
             rateLimit: `${config.RATE_LIMIT_MAX_REQUESTS} requests per ${config.RATE_LIMIT_WINDOW_MS / 1000} seconds`,
             features: {
                 workerPool: "Non-blocking yt-dlp execution with worker threads",
-                circuitBreaker: "Automatic failure detection and recovery",
                 requestTracing: "X-Request-ID header for distributed tracing",
                 retryLogic:
                     "Automatic retry with exponential backoff (up to 2 retries)",
@@ -98,13 +90,11 @@ function createApiRoutes(
      */
     router.get("/metrics", (req, res) => {
         const poolStats = workerPool.getStats();
-        const breakerStatus = circuitBreaker.getStatus();
 
         res.json({
             ok: true,
             timestamp: new Date().toISOString(),
             workerPool: poolStats,
-            circuitBreaker: breakerStatus,
         });
     });
 
@@ -169,7 +159,6 @@ function createApiRoutes(
             const meta = await extractInfo(
                 url,
                 workerPool,
-                circuitBreaker,
                 config,
                 logger,
                 2, // maxRetries

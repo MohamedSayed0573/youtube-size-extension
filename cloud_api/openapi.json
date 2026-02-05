@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "YouTube Size Extension Cloud API",
-    "description": "RESTful API for extracting YouTube video size information using yt-dlp. Features non-blocking worker pool execution and circuit breaker fault tolerance.",
+    "description": "RESTful API for extracting YouTube video size information using yt-dlp. Features non-blocking worker pool execution.",
     "version": "2.0.0",
     "contact": {
       "name": "YouTube Size Extension",
@@ -35,10 +35,6 @@
     {
       "name": "Monitoring",
       "description": "Metrics and monitoring endpoints"
-    },
-    {
-      "name": "Admin",
-      "description": "Administrative operations (requires authentication)"
     }
   ],
   "paths": {
@@ -64,7 +60,7 @@
     "/health": {
       "get": {
         "summary": "Health check",
-        "description": "Returns comprehensive health status including worker pool, circuit breaker, and system metrics",
+        "description": "Returns comprehensive health status including worker pool and system metrics",
         "tags": ["Health"],
         "responses": {
           "200": {
@@ -163,7 +159,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable - circuit breaker open",
+            "description": "Service unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -226,7 +222,7 @@
     "/api/v1/metrics": {
       "get": {
         "summary": "System metrics",
-        "description": "Returns real-time worker pool and circuit breaker metrics",
+        "description": "Returns real-time worker pool metrics",
         "tags": ["Monitoring"],
         "responses": {
           "200": {
@@ -235,68 +231,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MetricsResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/circuit-breaker/reset": {
-      "post": {
-        "summary": "Reset circuit breaker",
-        "description": "Manually reset the circuit breaker to CLOSED state",
-        "tags": ["Admin"],
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Circuit breaker reset successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Circuit breaker reset successfully"
-                    },
-                    "previousState": {
-                      "type": "string",
-                      "example": "OPEN"
-                    },
-                    "currentState": {
-                      "type": "string",
-                      "example": "CLOSED"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -378,9 +312,6 @@
             "type": "object"
           },
           "workerPool": {
-            "type": "object"
-          },
-          "circuitBreaker": {
             "type": "object"
           },
           "config": {
@@ -527,24 +458,6 @@
               },
               "peakWorkers": {
                 "type": "number"
-              }
-            }
-          },
-          "circuitBreaker": {
-            "type": "object",
-            "properties": {
-              "state": {
-                "type": "string",
-                "enum": ["CLOSED", "OPEN", "HALF_OPEN"]
-              },
-              "failures": {
-                "type": "number"
-              },
-              "successes": {
-                "type": "number"
-              },
-              "stats": {
-                "type": "object"
               }
             }
           }

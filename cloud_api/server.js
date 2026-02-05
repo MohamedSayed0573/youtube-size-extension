@@ -31,11 +31,9 @@ const { notFoundHandler, errorHandler } = require("./middleware/error-handler");
 // Routes
 const { createHealthRoutes } = require("./routes/health");
 const { createApiRoutes } = require("./routes/api");
-const { createAdminRoutes } = require("./routes/admin");
 
 // Core services
 const WorkerPool = require("./worker-pool");
-const { CircuitBreaker } = require("./circuit-breaker");
 
 // ============================================
 // Configuration & Logger
@@ -75,7 +73,7 @@ const { redisClient } = redisState;
 const getRedisReady = () => redisState.redisReady;
 
 // ============================================
-// Worker Pool & Circuit Breaker Setup
+// Worker Pool Setup
 // ============================================
 
 const workerPool = new WorkerPool({
@@ -84,14 +82,6 @@ const workerPool = new WorkerPool({
     taskTimeout: CONFIG.YTDLP_TIMEOUT + TIMEOUTS.TASK_BUFFER,
     maxTasksPerWorker: LIMITS.MAX_TASKS_PER_WORKER,
     idleTimeout: TIMEOUTS.WORKER_IDLE,
-});
-
-const circuitBreaker = new CircuitBreaker({
-    failureThreshold: LIMITS.CIRCUIT_FAILURE_THRESHOLD,
-    successThreshold: LIMITS.CIRCUIT_SUCCESS_THRESHOLD,
-    timeout: TIMEOUTS.CIRCUIT_COOLDOWN,
-    volumeThreshold: LIMITS.CIRCUIT_VOLUME_THRESHOLD,
-    name: "yt-dlp",
 });
 
 // Event handlers
@@ -111,31 +101,6 @@ workerPool.on("taskQueued", ({ queueLength }) => {
     if (queueLength > 5) {
         logger.warn({ queueLength }, "Task queue building up");
     }
-});
-
-circuitBreaker.on("open", ({ previousState, timestamp }) => {
-    logger.error(
-        { previousState, timestamp },
-        "Circuit breaker opened - yt-dlp calls failing"
-    );
-    Sentry.captureMessage("Circuit breaker opened for yt-dlp", {
-        level: "error",
-        tags: { component: "circuit-breaker" },
-    });
-});
-
-circuitBreaker.on("closed", ({ previousState, timestamp }) => {
-    logger.info(
-        { previousState, timestamp },
-        "Circuit breaker closed - service recovered"
-    );
-});
-
-circuitBreaker.on("half_open", ({ previousState, timestamp }) => {
-    logger.info(
-        { previousState, timestamp },
-        "Circuit breaker half-open - testing recovery"
-    );
 });
 
 // ============================================
@@ -340,7 +305,6 @@ const authMiddleware = createAuthMiddleware(CONFIG);
 const healthRouter = createHealthRoutes(
     CONFIG,
     workerPool,
-    circuitBreaker,
     { redisClient, getRedisReady },
     ytdlpPath,
     logger
@@ -352,16 +316,11 @@ app.use("/health", healthRouter);
 const apiRouter = createApiRoutes(
     CONFIG,
     workerPool,
-    circuitBreaker,
     logger,
     authMiddleware,
     apiLimiter
 );
 app.use("/api/v1", apiRouter);
-
-// Admin routes
-const adminRouter = createAdminRoutes(circuitBreaker, logger, authMiddleware);
-app.use("/api/v1/admin", adminRouter);
 
 // ============================================
 // Error Handlers
@@ -386,7 +345,6 @@ let server;
 if (typeof module !== "undefined" && module.exports) {
     module.exports = app;
     // Export for test isolation
-    module.exports.circuitBreaker = circuitBreaker;
     module.exports.workerPool = workerPool;
     module.exports.redisClient = redisClient;
 }
@@ -436,10 +394,6 @@ async function startServer() {
                     min: workerPool.minWorkers,
                     max: workerPool.maxWorkers,
                 },
-                circuitBreaker: {
-                    enabled: true,
-                    threshold: circuitBreaker.failureThreshold,
-                },
                 compression: "enabled (gzip)",
             },
             "Server started successfully"
@@ -469,9 +423,6 @@ async function startServer() {
         logger.info(`  Environment: ${CONFIG.NODE_ENV}`);
         logger.info(
             `  Worker Pool: ${workerPool.minWorkers}-${workerPool.maxWorkers} workers`
-        );
-        logger.info(
-            `  Circuit Breaker: Enabled (threshold: ${circuitBreaker.failureThreshold})`
         );
         logger.info(
             `  Distributed Rate Limiting: ${CONFIG.REDIS_ENABLED ? "✓ Enabled" : "✗ Disabled"}`

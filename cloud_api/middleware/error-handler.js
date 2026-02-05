@@ -22,7 +22,6 @@ function notFoundHandler(req, res) {
             "/api/v1/docs",
             "/api/v1/openapi",
             "/api/v1/metrics",
-            "/api/v1/admin/circuit-breaker/reset",
         ],
     });
 }

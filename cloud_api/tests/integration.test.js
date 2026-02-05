@@ -5,7 +5,6 @@
  * - End-to-end API flows
  * - Redis integration (when enabled)
  * - Worker pool behavior under load
- * - Circuit breaker integration
  * - Graceful shutdown scenarios
  */
 
@@ -62,12 +61,6 @@ describe("Integration Tests", () => {
         }
     });
 
-    // Reset circuit breaker before each test to ensure isolation
-    beforeEach(() => {
-        if (app.circuitBreaker) {
-            app.circuitBreaker.reset();
-        }
-    });
     describe("End-to-End API Workflow", () => {
         test.skip("should successfully extract video size information", async () => {
             // Skipped: Makes real YouTube API call (takes 30+ seconds)
@@ -245,64 +238,6 @@ describe("Integration Tests", () => {
             expect(response.body.workerPool.totalWorkers).toBeLessThanOrEqual(
                 4
             ); // MAX_WORKERS
-        });
-    });
-
-    describe("Circuit Breaker Integration", () => {
-        test("should track circuit breaker state", async () => {
-            const response = await request(app).get("/api/v1/metrics");
-
-            expect(response.status).toBe(200);
-            expect(response.body).toHaveProperty("circuitBreaker");
-            expect(response.body.circuitBreaker).toHaveProperty("state");
-            expect(["CLOSED", "OPEN", "HALF_OPEN"]).toContain(
-                response.body.circuitBreaker.state
-            );
-            expect(response.body.circuitBreaker).toHaveProperty("failures");
-            expect(response.body.circuitBreaker).toHaveProperty("successes");
-        });
-
-        test("should reset circuit breaker via admin endpoint", async () => {
-            // Enable auth for this test
-            process.env.REQUIRE_AUTH = "true";
-            process.env.API_KEY = "test-key";
-
-            const response = await request(app)
-                .post("/api/v1/admin/circuit-breaker/reset")
-                .set("X-API-Key", "test-key")
-                .expect(200);
-
-            expect(response.body).toHaveProperty("ok", true);
-            expect(response.body).toHaveProperty("message");
-
-            // Reset auth for other tests
-            process.env.REQUIRE_AUTH = "false";
-        });
-
-        test.skip("should protect admin endpoint with authentication", async () => {
-            // Skipped: Config is loaded at server startup and can't be changed dynamically
-            // Auth protection is tested in server.test.js with proper config setup
-            process.env.REQUIRE_AUTH = "true";
-            process.env.API_KEY = "test-key";
-
-            // Without API key
-            const response1 = await request(app)
-                .post("/api/v1/admin/circuit-breaker/reset")
-                .expect(401);
-
-            expect(response1.body).toHaveProperty("ok", false);
-            expect(response1.body).toHaveProperty("error");
-
-            // With wrong API key
-            const response2 = await request(app)
-                .post("/api/v1/admin/circuit-breaker/reset")
-                .set("X-API-Key", "wrong-key")
-                .expect(401);
-
-            expect(response2.body).toHaveProperty("ok", false);
-
-            // Reset auth
-            process.env.REQUIRE_AUTH = "false";
         });
     });
 

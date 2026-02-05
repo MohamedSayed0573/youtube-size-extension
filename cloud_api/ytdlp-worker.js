@@ -106,7 +106,7 @@ async function executeYtdlp(
         const data = JSON.parse(stdout);
         return { success: true, data };
     } catch (error) {
-        // Classify error types for circuit breaker
+        // Classify error types for retry and error reporting
         let errorCode = "UNKNOWN";
         let errorMessage = error.message || "Unknown error occurred";
 

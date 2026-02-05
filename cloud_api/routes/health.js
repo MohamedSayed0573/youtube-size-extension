@@ -11,20 +11,12 @@ const { formatUptime } = require("../utils/ytdlp");
  * Create health check routes
  * @param {Object} config - Server configuration object
  * @param {Object} workerPool - Worker pool instance
- * @param {Object} circuitBreaker - Circuit breaker instance
  * @param {Object} redisState - Redis state object with client and getRedisReady
  * @param {string} ytdlpPath - Path to yt-dlp executable
  * @param {import('pino').Logger} logger - Pino logger instance
  * @returns {import('express').Router} Express router instance
  */
-function createHealthRoutes(
-    config,
-    workerPool,
-    circuitBreaker,
-    redisState,
-    ytdlpPath,
-    logger
-) {
+function createHealthRoutes(config, workerPool, redisState, ytdlpPath, logger) {
     const router = express.Router();
     const { redisClient, getRedisReady } = redisState;
 
@@ -187,7 +179,6 @@ function createHealthRoutes(
     router.get("/main", async (req, res) => {
         try {
             const poolStats = workerPool.getStats();
-            const breakerStatus = circuitBreaker.getStatus();
 
             // Check yt-dlp availability by checking if it's in PATH
             // Don't actually call it to keep health check fast
@@ -196,14 +187,10 @@ function createHealthRoutes(
 
             // Determine overall health status
             let overallStatus = "healthy";
-            if (!ytdlpAvailable || breakerStatus.state === "OPEN") {
+            if (!ytdlpAvailable) {
                 overallStatus = "degraded";
             }
-            if (
-                !ytdlpAvailable &&
-                (breakerStatus.state === "OPEN" ||
-                    poolStats.activeWorkers === 0)
-            ) {
+            if (!ytdlpAvailable && poolStats.activeWorkers === 0) {
                 overallStatus = "unhealthy";
             }
 
@@ -260,7 +247,6 @@ function createHealthRoutes(
                     },
                 },
                 workerPool: poolStats,
-                circuitBreaker: breakerStatus,
                 config: {
                     environment: config.NODE_ENV,
                     authEnabled: config.REQUIRE_AUTH,

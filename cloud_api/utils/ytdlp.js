@@ -162,23 +162,20 @@ function sizeFromFormat(fmt, durationSec) {
 /**
  * Extracts video metadata from YouTube using yt-dlp with retry logic
  *
- * Uses worker pool and circuit breaker for non-blocking execution
- * and fault tolerance.
+ * Uses worker pool for non-blocking execution.
  * @async
  * @param {string} url - The YouTube video URL (must be validated first)
  * @param {Object} workerPool - Worker pool instance
- * @param {Object} circuitBreaker - Circuit breaker instance
  * @param {Object} config - Configuration object
  * @param {Object} logger - Logger instance
  * @param {number} [maxRetries] - Maximum number of retry attempts
  * @param {string|null} [cookies] - Optional cookies in Netscape format for authentication
  * @returns {Promise<Object>} Parsed JSON metadata from yt-dlp
- * @throws {Error} If yt-dlp fails after all retries or circuit is open
+ * @throws {Error} If yt-dlp fails after all retries
  */
 async function extractInfo(
     url,
     workerPool,
-    circuitBreaker,
     config,
     logger,
     maxRetries = 2,
@@ -188,25 +185,17 @@ async function extractInfo(
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            // Execute through circuit breaker with worker pool
-            const data = await circuitBreaker.execute(async () => {
-                return await workerPool.execute({
-                    url,
-                    timeout: config.YTDLP_TIMEOUT,
-                    maxBuffer: config.YTDLP_MAX_BUFFER,
-                    retryAttempt: attempt,
-                    cookies, // Pass cookies for YouTube authentication
-                });
+            const data = await workerPool.execute({
+                url,
+                timeout: config.YTDLP_TIMEOUT,
+                maxBuffer: config.YTDLP_MAX_BUFFER,
+                retryAttempt: attempt,
+                cookies, // Pass cookies for YouTube authentication
             });
 
             return data;
         } catch (error) {
             lastError = error;
-
-            // Don't retry if circuit is open
-            if (error.code === "CIRCUIT_OPEN") {
-                throw error;
-            }
 
             // Don't retry on timeout or critical errors
             const noRetryErrors = ["TIMEOUT", "NOT_FOUND", "VIDEO_UNAVAILABLE"];
@@ -260,11 +249,6 @@ async function extractInfo(
     }
     if (lastError.code === "NOT_FOUND") {
         throw new Error("yt-dlp executable not found. Please install yt-dlp.");
-    }
-    if (lastError.code === "CIRCUIT_OPEN") {
-        throw new Error(
-            "Service temporarily unavailable. yt-dlp is experiencing issues."
-        );
     }
     throw new Error(
         `Failed to fetch metadata after ${maxRetries + 1} attempts: ${lastError.message}`
