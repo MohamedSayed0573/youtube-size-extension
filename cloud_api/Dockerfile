@@ -47,7 +47,6 @@ COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --chown=nodejs:nodejs package*.json ./
 COPY --chown=nodejs:nodejs server.js ./
 COPY --chown=nodejs:nodejs instrument.js ./
-COPY --chown=nodejs:nodejs circuit-breaker.js ./
 COPY --chown=nodejs:nodejs worker-pool.js ./
 COPY --chown=nodejs:nodejs ytdlp-worker.js ./
 COPY --chown=nodejs:nodejs config ./config
