@@ -126,7 +126,7 @@ const Logger = {
  * @constant {RegExp[]}
  */
 const DANGEROUS_URL_PATTERNS = [
-    /[;&|`$(){}[\]<>\\]/, // Shell metacharacters
+    /[;|`$(){}[\]<>\\]/, // Shell metacharacters (& is allowed - it's a valid URL query separator)
     /\$\(/, // Command substitution
     /`/, // Backtick execution
     /\.\.\//, // Path traversal
@@ -141,6 +141,7 @@ const VALID_YOUTUBE_HOSTS = [
     "www.youtube.com",
     "youtube.com",
     "m.youtube.com",
+    "music.youtube.com",
     "youtu.be",
 ];
 

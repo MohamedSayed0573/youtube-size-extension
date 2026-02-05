@@ -26,7 +26,7 @@ function isValidYouTubeUrl(url) {
 
     // Block shell metacharacters and command injection patterns
     const dangerousPatterns = [
-        /[;&|`$(){}[\]<>\\]/, // Shell metacharacters (no need to escape [ ] inside character class)
+        /[;|`$(){}[\]<>\\]/, // Shell metacharacters (& is allowed - it's a valid URL query separator)
         /\$\(/, // Command substitution
         /`/, // Backtick execution
         /\.\.\//, // Path traversal
@@ -46,6 +46,7 @@ function isValidYouTubeUrl(url) {
             "www.youtube.com",
             "youtube.com",
             "m.youtube.com",
+            "music.youtube.com",
             "youtu.be",
         ];
 
