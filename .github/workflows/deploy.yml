@@ -52,7 +52,6 @@ jobs:
               env:
                   API_KEY: ${{ secrets.API_KEY }}
                   ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
-                  REDIS_ENABLED: ${{ vars.REDIS_ENABLED }}
                   REDIS_URL: ${{ secrets.REDIS_URL }}
                   SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
                   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
@@ -68,7 +67,7 @@ jobs:
                   host: ${{ secrets.EC2_IP }}
                   username: ubuntu
                   key: ${{ secrets.EC2_SSH_KEY }}
-                  envs: API_KEY,ALLOWED_ORIGINS,REDIS_ENABLED,REDIS_URL,SENTRY_DSN,DOCKER_USERNAME,PORT,NODE_ENV,REQUIRE_AUTH,RATE_LIMIT_WINDOW_MS,RATE_LIMIT_MAX_REQUESTS,YTDLP_TIMEOUT,YTDLP_MAX_BUFFER,ENABLE_HEALTH_DETAILS
+                  envs: API_KEY,ALLOWED_ORIGINS,REDIS_URL,SENTRY_DSN,DOCKER_USERNAME,PORT,NODE_ENV,REQUIRE_AUTH,RATE_LIMIT_WINDOW_MS,RATE_LIMIT_MAX_REQUESTS,YTDLP_TIMEOUT,YTDLP_MAX_BUFFER,ENABLE_HEALTH_DETAILS
                   script: |
                       # Navigate to app directory
                       cd /opt/ytdlp-api
@@ -82,7 +81,6 @@ jobs:
                       ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
                       RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS}
                       RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS}
-                      REDIS_ENABLED=${REDIS_ENABLED}
                       REDIS_URL=${REDIS_URL}
                       SENTRY_DSN=${SENTRY_DSN}
                       YTDLP_TIMEOUT=${YTDLP_TIMEOUT}

@@ -82,8 +82,7 @@ const envSchema = z
         ...env,
         // Auto-enable Redis if URL is provided
         REDIS_ENABLED:
-            env.REDIS_ENABLED === "true" ||
-            (!!env.REDIS_URL && env.REDIS_URL.length > 0),
+            env.REDIS_ENABLED || (!!env.REDIS_URL && env.REDIS_URL.length > 0),
     }));
 
 /**
