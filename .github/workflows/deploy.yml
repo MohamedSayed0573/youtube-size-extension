@@ -110,6 +110,16 @@ jobs:
                         -v /opt/ytdlp-api/logs:/app/logs \
                         ${DOCKER_USERNAME}/ytdlp-api:latest
 
-                      # Verify health
-                      sleep 10
-                      curl -f http://localhost:80/health || exit 1
+                      # Verify health with retries (allow 40s for startup)
+                      echo "Waiting for application to start..."
+                      for i in {1..8}; do
+                        sleep 5
+                        if curl -sf http://localhost:80/health > /dev/null 2>&1; then
+                          echo "✅ Application is healthy!"
+                          exit 0
+                        fi
+                        echo "Attempt $i/8: Application not ready yet..."
+                      done
+                      echo "❌ Health check failed after 40 seconds"
+                      sudo docker logs ytdlp-api --tail 50
+                      exit 1
