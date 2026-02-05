@@ -4,7 +4,7 @@
  */
 
 const rateLimit = require("express-rate-limit");
-const RedisStore = require("rate-limit-redis");
+const { default: RedisStore } = require("rate-limit-redis");
 
 /**
  * Create rate limiter with Redis or memory store
