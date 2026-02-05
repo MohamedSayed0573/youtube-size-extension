@@ -50,34 +50,44 @@ jobs:
             - name: Deploy via SSH
               uses: appleboy/ssh-action@v1.0.3
               env:
-                  API_KEY: ${{ secrets.API_KEY || 'dev-api-key-please-change' }}
-                  ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS || '*' }}
-                  REDIS_ENABLED: ${{ secrets.REDIS_ENABLED || 'false' }}
-                  REDIS_URL: ${{ secrets.REDIS_URL || '' }}
+                  API_KEY: ${{ secrets.API_KEY }}
+                  ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
+                  REDIS_ENABLED: ${{ vars.REDIS_ENABLED }}
+                  REDIS_URL: ${{ secrets.REDIS_URL }}
+                  SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
                   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+                  PORT: ${{ vars.PORT }}
+                  NODE_ENV: ${{ vars.NODE_ENV }}
+                  REQUIRE_AUTH: ${{ vars.REQUIRE_AUTH }}
+                  RATE_LIMIT_WINDOW_MS: ${{ vars.RATE_LIMIT_WINDOW_MS }}
+                  RATE_LIMIT_MAX_REQUESTS: ${{ vars.RATE_LIMIT_MAX_REQUESTS }}
+                  YTDLP_TIMEOUT: ${{ vars.YTDLP_TIMEOUT }}
+                  YTDLP_MAX_BUFFER: ${{ vars.YTDLP_MAX_BUFFER }}
+                  ENABLE_HEALTH_DETAILS: ${{ vars.ENABLE_HEALTH_DETAILS }}
               with:
                   host: ${{ secrets.EC2_IP }}
                   username: ubuntu
                   key: ${{ secrets.EC2_SSH_KEY }}
-                  envs: API_KEY,ALLOWED_ORIGINS,REDIS_ENABLED,REDIS_URL,DOCKER_USERNAME
+                  envs: API_KEY,ALLOWED_ORIGINS,REDIS_ENABLED,REDIS_URL,SENTRY_DSN,DOCKER_USERNAME,PORT,NODE_ENV,REQUIRE_AUTH,RATE_LIMIT_WINDOW_MS,RATE_LIMIT_MAX_REQUESTS,YTDLP_TIMEOUT,YTDLP_MAX_BUFFER,ENABLE_HEALTH_DETAILS
                   script: |
                       # Navigate to app directory
                       cd /opt/ytdlp-api
 
                       # Create .env file from environment variables
                       cat > .env << EOF
-                      PORT=80
-                      NODE_ENV=production
-                      REQUIRE_AUTH=true
+                      PORT=${PORT}
+                      NODE_ENV=${NODE_ENV}
+                      REQUIRE_AUTH=${REQUIRE_AUTH}
                       API_KEY=${API_KEY}
                       ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
-                      RATE_LIMIT_WINDOW_MS=60000
-                      RATE_LIMIT_MAX_REQUESTS=20
+                      RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS}
+                      RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS}
                       REDIS_ENABLED=${REDIS_ENABLED}
                       REDIS_URL=${REDIS_URL}
-                      YTDLP_TIMEOUT=25000
-                      YTDLP_MAX_BUFFER=10485760
-                      ENABLE_HEALTH_DETAILS=false
+                      SENTRY_DSN=${SENTRY_DSN}
+                      YTDLP_TIMEOUT=${YTDLP_TIMEOUT}
+                      YTDLP_MAX_BUFFER=${YTDLP_MAX_BUFFER}
+                      ENABLE_HEALTH_DETAILS=${ENABLE_HEALTH_DETAILS}
                       EOF
 
                       # Ensure proper permissions
