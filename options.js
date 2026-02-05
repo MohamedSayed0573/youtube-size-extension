@@ -24,7 +24,7 @@
         ttlHours: 24,
         showBadge: true,
         showLength: true,
-        useCloud: true,
+        preferredMethod: "cloud",
 
         resolutions: ["480p", "720p", "1080p", "1440p"],
     };
@@ -120,8 +120,14 @@
             if (document.getElementById("showLength")) {
                 $("showLength").checked = cfg.showLength !== false; // default true
             }
-            if (document.getElementById("useCloud")) {
-                $("useCloud").checked = !!cfg.useCloud;
+
+            // Handle method selection (with migration for legacy useCloud)
+            let method = cfg.preferredMethod;
+            if (!method && "useCloud" in cfg) {
+                method = cfg.useCloud ? "cloud" : "native";
+            }
+            if (document.getElementById("method")) {
+                $("method").value = method || defaultSettings.preferredMethod;
             }
 
             setResCheckboxes(cfg.resolutions || defaultSettings.resolutions);
@@ -150,7 +156,7 @@
             ttlHours: ttl,
             showBadge: !!$("showBadge").checked,
             showLength: !!$("showLength")?.checked,
-            useCloud: !!$("useCloud")?.checked,
+            preferredMethod: $("method")?.value || "cloud",
 
             resolutions: selected,
         };

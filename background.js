@@ -171,15 +171,6 @@ async function extractYouTubeCookies() {
 }
 
 /**
- * Simple helper to delay execution
- * @param {number} ms - Milliseconds to delay
- * @returns {Promise<void>}
- */
-function delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
  * Calls the cloud API to fetch video size information
  *
  * This is an alternative to the native messaging host, allowing users to deploy
@@ -581,7 +572,7 @@ const defaultSettings = {
     ttlHours: 24,
     showBadge: true,
     showLength: true,
-    useCloud: true,
+    preferredMethod: "cloud",
     cloudApiUrl: "",
     resolutions: ["480p", "720p", "1080p", "1440p"],
 };
@@ -769,27 +760,40 @@ async function prefetchForUrl(url, tabId, forced = false) {
         const durationHint = getDurationHint(videoId);
         let msg = null;
         // Cloud API URL is configured in config.json (not user-editable)
-        const tryCloudFirst = !!(
+        // Determine preferred method (support legacy useCloud for backward compat)
+        let useCloud = true;
+        if (settings && settings.preferredMethod) {
+            useCloud = settings.preferredMethod === "cloud";
+        } else if (settings && typeof settings.useCloud !== "undefined") {
+            useCloud = !!settings.useCloud;
+        }
+
+        // Validate cloud config if selected
+        const hasCloudUrl =
             settings &&
-            settings.useCloud &&
             typeof settings.cloudApiUrl === "string" &&
-            settings.cloudApiUrl.trim()
-        );
+            settings.cloudApiUrl.trim().length > 0;
+
         try {
-            if (tryCloudFirst) {
+            if (useCloud) {
+                if (!hasCloudUrl) {
+                    throw new Error("Cloud API URL not configured");
+                }
                 msg = await callCloudApi(url, durationHint);
             } else {
                 msg = await callNativeHost(url, durationHint);
             }
-        } catch (e1) {
-            // Fallback to the other path
-            try {
-                await delay(1000); // Simple backoff before fallback
-                msg = tryCloudFirst
-                    ? await callNativeHost(url, durationHint)
-                    : await callCloudApi(url, durationHint);
-            } catch (e2) {
-                throw e2 || e1;
+        } catch (e) {
+            // Explicitly do NOT fallback, but give specific advice based on failure
+            const errMsg = e.message || String(e);
+            if (useCloud) {
+                throw new Error(
+                    `Cloud API failed (${errMsg}). Please try enabling Native Host in Options.`
+                );
+            } else {
+                throw new Error(
+                    `Native Host failed (${errMsg}). Please try enabling Cloud API in Options.`
+                );
             }
         }
         if (msg && msg.ok) {

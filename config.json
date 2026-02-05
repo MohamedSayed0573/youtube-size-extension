@@ -1,4 +1,5 @@
 {
-  "cloudApiUrl": "http://52.5.44.112",
-  "useCloud": true
+  "cloudApiUrl": "http://52.5.44.112/api/v1",
+  "cloudApiKey": "09aafad01ed0f0e881d0c57f770e841251d527b6a61b754739fd726b523c40a9",
+  "preferredMethod": "cloud"
 }
