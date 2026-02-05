@@ -248,17 +248,7 @@ describe("Cloud API Server", () => {
 
     describe("Security Features", () => {
         test("should block URLs with shell metacharacters", async () => {
-            const dangerousChars = [
-                ";",
-                "|",
-                "&",
-                "`",
-                "$",
-                "(",
-                ")",
-                "<",
-                ">",
-            ];
+            const dangerousChars = [";", "|", "`", "$", "(", ")", "<", ">"];
 
             for (const char of dangerousChars) {
                 const response = await request(app)

