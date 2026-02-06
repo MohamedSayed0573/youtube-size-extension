@@ -30,6 +30,7 @@
     "helmet": "^8.1.0",
     "pino": "^8.17.2",
     "pino-pretty": "^10.3.1",
+    "piscina": "^5.1.4",
     "rate-limit-redis": "^4.3.1",
     "redis": "^5.10.0",
     "zod": "^3.22.4"
