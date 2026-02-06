@@ -6,63 +6,10 @@
 const redis = require("redis");
 
 /**
- * Redis state manager class for proper state tracking
- * Encapsulates connection state to avoid closure-based state bugs
- */
-class RedisState {
-    constructor(client) {
-        this._client = client;
-        this._ready = false;
-        this._connectionPromise = null;
-    }
-
-    get client() {
-        return this._client;
-    }
-
-    get isReady() {
-        return this._ready;
-    }
-
-    setReady(value) {
-        this._ready = value;
-    }
-
-    setConnectionPromise(promise) {
-        this._connectionPromise = promise;
-    }
-
-    /**
-     * Wait for Redis connection to be established
-     * @param {number} timeoutMs - Maximum time to wait for connection
-     * @returns {Promise<boolean>} True if connected, false if timeout or error
-     */
-    async waitForConnection(timeoutMs = 5000) {
-        if (this._ready) return true;
-        if (!this._connectionPromise) return false;
-
-        try {
-            await Promise.race([
-                this._connectionPromise,
-                new Promise((_, reject) =>
-                    setTimeout(
-                        () => reject(new Error("Connection timeout")),
-                        timeoutMs
-                    )
-                ),
-            ]);
-            return this._ready;
-        } catch (error) {
-            return false;
-        }
-    }
-}
-
-/**
  * Initialize Redis client with event handlers
  * @param {Object} config - Configuration object
  * @param {Object} logger - Pino logger instance
- * @returns {Object} Redis state manager with client and connection methods
+ * @returns {Object} Redis state with client and connection methods
  */
 function initializeRedis(config, logger) {
     if (!config.REDIS_ENABLED) {
@@ -96,12 +43,12 @@ function initializeRedis(config, logger) {
     };
 
     const redisClient = redis.createClient(redisOptions);
-    const state = new RedisState(redisClient);
+    let ready = false;
 
     // Event handlers
     redisClient.on("error", (err) => {
         logger.error({ error: err.message }, "Redis client error");
-        state.setReady(false);
+        ready = false;
     });
 
     redisClient.on("connect", () => {
@@ -110,17 +57,17 @@ function initializeRedis(config, logger) {
 
     redisClient.on("ready", () => {
         logger.info("Redis client ready");
-        state.setReady(true);
+        ready = true;
     });
 
     redisClient.on("reconnecting", () => {
         logger.warn("Redis client reconnecting");
-        state.setReady(false);
+        ready = false;
     });
 
     redisClient.on("end", () => {
         logger.info("Redis client disconnected");
-        state.setReady(false);
+        ready = false;
     });
 
     // Connect to Redis and store the promise for awaiting
@@ -145,15 +92,36 @@ function initializeRedis(config, logger) {
             return false;
         });
 
-    state.setConnectionPromise(connectionPromise);
-
     return {
         redisClient,
         get redisReady() {
-            return state.isReady;
+            return ready;
         },
-        waitForConnection: (timeoutMs) => state.waitForConnection(timeoutMs),
+        /**
+         * Wait for Redis connection to be established
+         * @param {number} timeoutMs - Maximum time to wait for connection
+         * @returns {Promise<boolean>} True if connected, false if timeout or error
+         */
+        async waitForConnection(timeoutMs = 5000) {
+            if (ready) return true;
+            if (!connectionPromise) return false;
+
+            try {
+                await Promise.race([
+                    connectionPromise,
+                    new Promise((_, reject) =>
+                        setTimeout(
+                            () => reject(new Error("Connection timeout")),
+                            timeoutMs
+                        )
+                    ),
+                ]);
+                return ready;
+            } catch (error) {
+                return false;
+            }
+        },
     };
 }
 
-module.exports = { initializeRedis, RedisState };
+module.exports = { initializeRedis };

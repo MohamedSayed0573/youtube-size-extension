@@ -52,54 +52,6 @@ async function extractYouTubeCookies() {
             return null;
         }
 
-        // Query cookies for multiple YouTube domains
-        const cookiePromises = [
-            new Promise((resolve) => {
-                chrome.cookies.getAll({ domain: ".youtube.com" }, (result) => {
-                    const _e =
-                        chrome && chrome.runtime && chrome.runtime.lastError;
-                    void _e;
-                    resolve(result || []);
-                });
-            }),
-            new Promise((resolve) => {
-                chrome.cookies.getAll({ domain: "youtube.com" }, (result) => {
-                    const _e =
-                        chrome && chrome.runtime && chrome.runtime.lastError;
-                    void _e;
-                    resolve(result || []);
-                });
-            }),
-            new Promise((resolve) => {
-                chrome.cookies.getAll(
-                    { domain: "www.youtube.com" },
-                    (result) => {
-                        const _e =
-                            chrome &&
-                            chrome.runtime &&
-                            chrome.runtime.lastError;
-                        void _e;
-                        resolve(result || []);
-                    }
-                );
-            }),
-            new Promise((resolve) => {
-                chrome.cookies.getAll(
-                    { url: "https://www.youtube.com" },
-                    (result) => {
-                        const _e =
-                            chrome &&
-                            chrome.runtime &&
-                            chrome.runtime.lastError;
-                        void _e;
-                        resolve(result || []);
-                    }
-                );
-            }),
-        ];
-
-        const allResults = await Promise.all(cookiePromises);
-
         // Only extract essential authentication cookies (principle of least privilege)
         // These are the cookies yt-dlp needs to authenticate as a logged-in user
         const AUTH_COOKIES = new Set([
@@ -115,26 +67,19 @@ async function extractYouTubeCookies() {
             "__Secure-3PAPISID",
         ]);
 
-        // Merge and deduplicate cookies by name, filtering for auth cookies only
-        const cookieMap = new Map();
-        for (const result of allResults) {
-            for (const c of result) {
-                // Only include essential authentication cookies
-                if (AUTH_COOKIES.has(c.name)) {
-                    const key = `${c.domain}|${c.name}`;
-                    if (!cookieMap.has(key)) {
-                        cookieMap.set(key, c);
-                    }
-                }
-            }
-        }
+        // Single query to .youtube.com covers all subdomains
+        const allCookies = await new Promise((resolve) => {
+            chrome.cookies.getAll({ domain: ".youtube.com" }, (result) => {
+                resolve(result || []);
+            });
+        });
 
-        const cookies = Array.from(cookieMap.values());
+        const cookies = allCookies.filter((c) => AUTH_COOKIES.has(c.name));
         Logger.info(
             `Extracted ${cookies.length} YouTube authentication cookies`
         );
 
-        if (!cookies || cookies.length === 0) {
+        if (cookies.length === 0) {
             Logger.info("No YouTube authentication cookies found");
             return null;
         }
@@ -294,47 +239,39 @@ function getDurationHint(videoId) {
 }
 
 /**
- * Prunes expired entries from the durationHints map and enforces size limit
+ * Generic map pruning - removes expired entries and enforces size limit
+ * @param {Map} map - The map to prune
+ * @param {Object} options - Pruning options
+ * @param {number} [options.ttl] - TTL in milliseconds (skips TTL check if omitted)
+ * @param {Function} options.getTimestamp - Extracts timestamp from map value
+ * @param {number} options.maxSize - Maximum entries to keep
+ * @param {string} options.name - Map name for logging
  */
-function pruneDurationHints() {
+function pruneMap(map, { ttl, getTimestamp, maxSize, name }) {
     try {
-        const now = Date.now();
-        // Remove expired entries
-        for (const [vid, rec] of durationHints.entries()) {
-            const ts = rec && typeof rec.ts === "number" ? rec.ts : 0;
-            if (!ts || now - ts > HINT_TTL_MS) {
-                durationHints.delete(vid);
+        // Remove expired entries if TTL is specified
+        if (ttl) {
+            const now = Date.now();
+            for (const [key, value] of map.entries()) {
+                const ts = getTimestamp(value);
+                if (!ts || now - ts > ttl) {
+                    map.delete(key);
+                }
             }
         }
-        // Enforce size limit (LRU-style: remove oldest entries if over limit)
-        if (durationHints.size > MAX_MAP_SIZE) {
-            const entries = Array.from(durationHints.entries());
-            entries.sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
-            const toRemove = entries.slice(0, entries.length - MAX_MAP_SIZE);
-            for (const [vid] of toRemove) {
-                durationHints.delete(vid);
+        // Enforce size limit (LRU-style: remove oldest entries)
+        if (map.size > maxSize) {
+            const entries = Array.from(map.entries());
+            entries.sort(
+                (a, b) => (getTimestamp(a[1]) || 0) - (getTimestamp(b[1]) || 0)
+            );
+            const toRemove = entries.slice(0, entries.length - maxSize);
+            for (const [key] of toRemove) {
+                map.delete(key);
             }
         }
     } catch (e) {
-        Logger.warn("pruneDurationHints failed", e);
-    }
-}
-
-/**
- * Prunes the lastFetchMs map to enforce size limit
- */
-function pruneLastFetchMs() {
-    try {
-        if (lastFetchMs.size > MAX_MAP_SIZE) {
-            const entries = Array.from(lastFetchMs.entries());
-            entries.sort((a, b) => a[1] - b[1]); // Sort by timestamp ascending
-            const toRemove = entries.slice(0, entries.length - MAX_MAP_SIZE);
-            for (const [vid] of toRemove) {
-                lastFetchMs.delete(vid);
-            }
-        }
-    } catch (e) {
-        Logger.warn("pruneLastFetchMs failed", e);
+        Logger.warn(`pruneMap(${name}) failed`, e);
     }
 }
 
@@ -342,8 +279,17 @@ function pruneLastFetchMs() {
  * Prunes all tracking maps to prevent unbounded memory growth
  */
 function pruneAllMaps() {
-    pruneDurationHints();
-    pruneLastFetchMs();
+    pruneMap(durationHints, {
+        ttl: HINT_TTL_MS,
+        getTimestamp: (rec) => (rec && typeof rec.ts === "number" ? rec.ts : 0),
+        maxSize: MAX_MAP_SIZE,
+        name: "durationHints",
+    });
+    pruneMap(lastFetchMs, {
+        getTimestamp: (ts) => ts,
+        maxSize: MAX_MAP_SIZE,
+        name: "lastFetchMs",
+    });
 }
 
 /**
@@ -415,9 +361,6 @@ function tabsQuery(queryInfo) {
     return new Promise((resolve) => {
         try {
             chrome.tabs.query(queryInfo, (tabs) => {
-                // Swallow lastError and resolve with empty list on failure
-                const _e = chrome && chrome.runtime && chrome.runtime.lastError;
-                void _e;
                 resolve(Array.isArray(tabs) ? tabs : []);
             });
         } catch (e) {
@@ -436,8 +379,6 @@ function tabsGet(tabId) {
     return new Promise((resolve) => {
         try {
             chrome.tabs.get(tabId, (tab) => {
-                const _e = chrome && chrome.runtime && chrome.runtime.lastError;
-                void _e;
                 resolve(tab || null);
             });
         } catch (e) {
@@ -811,11 +752,7 @@ async function prefetchForUrl(url, tabId, forced = false) {
                 chrome.runtime.sendMessage(
                     { type: "sizeCacheUpdated", videoId },
                     () => {
-                        /* ignore */
-                        const _e =
-                            chrome &&
-                            chrome.runtime &&
-                            chrome.runtime.lastError; // swallow
+                        /* ignore - no listeners is expected */
                     }
                 );
             } catch (e) {
@@ -882,8 +819,7 @@ async function prefetchForUrl(url, tabId, forced = false) {
                     },
                 },
                 () => {
-                    const _e =
-                        chrome && chrome.runtime && chrome.runtime.lastError; // swallow
+                    /* ignore - no listeners is expected */
                 }
             );
         } catch (e) {

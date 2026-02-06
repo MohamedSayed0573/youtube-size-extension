@@ -11,9 +11,25 @@ const { VIDEO_FORMAT_IDS, AUDIO_FALLBACK_ID } = require("../config/constants");
  *
  * Prevents command injection by ensuring only valid YouTube URLs are processed.
  * Blocks any URL with shell metacharacters or suspicious patterns.
+ * Note: A matching validation exists in the extension's utils.js for the client-side.
  * @param {string} url - The URL to validate
  * @returns {boolean} True if URL is valid and safe
  */
+
+const DANGEROUS_URL_PATTERNS = [
+    /[;|`$(){}[\]<>\\]/, // Shell metacharacters (& is allowed - it's a valid URL query separator)
+    /\.\.\//, // Path traversal
+    /file:\/\//, // File protocol (defense-in-depth; also blocked by protocol check)
+];
+
+const VALID_YOUTUBE_HOSTS = [
+    "www.youtube.com",
+    "youtube.com",
+    "m.youtube.com",
+    "music.youtube.com",
+    "youtu.be",
+];
+
 function isValidYouTubeUrl(url) {
     if (!url || typeof url !== "string") {
         return false;
@@ -25,15 +41,7 @@ function isValidYouTubeUrl(url) {
     }
 
     // Block shell metacharacters and command injection patterns
-    const dangerousPatterns = [
-        /[;|`$(){}[\]<>\\]/, // Shell metacharacters (& is allowed - it's a valid URL query separator)
-        /\$\(/, // Command substitution
-        /`/, // Backtick execution
-        /\.\.\//, // Path traversal
-        /file:\/\//, // File protocol
-    ];
-
-    for (const pattern of dangerousPatterns) {
+    for (const pattern of DANGEROUS_URL_PATTERNS) {
         if (pattern.test(url)) {
             return false;
         }
@@ -42,15 +50,8 @@ function isValidYouTubeUrl(url) {
     // Validate it's actually a YouTube URL
     try {
         const parsedUrl = new URL(url);
-        const validHosts = [
-            "www.youtube.com",
-            "youtube.com",
-            "m.youtube.com",
-            "music.youtube.com",
-            "youtu.be",
-        ];
 
-        if (!validHosts.includes(parsedUrl.hostname)) {
+        if (!VALID_YOUTUBE_HOSTS.includes(parsedUrl.hostname)) {
             return false;
         }
 

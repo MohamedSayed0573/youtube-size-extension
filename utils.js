@@ -122,15 +122,14 @@ const Logger = {
 };
 
 /**
- * Dangerous patterns that indicate potential command injection
+ * Dangerous patterns that indicate potential command injection.
+ * Note: A matching validation exists in cloud_api/utils/ytdlp.js for the server-side.
  * @constant {RegExp[]}
  */
 const DANGEROUS_URL_PATTERNS = [
     /[;|`$(){}[\]<>\\]/, // Shell metacharacters (& is allowed - it's a valid URL query separator)
-    /\$\(/, // Command substitution
-    /`/, // Backtick execution
     /\.\.\//, // Path traversal
-    /file:\/\//, // File protocol
+    /file:\/\//, // File protocol (defense-in-depth; also blocked by protocol check)
 ];
 
 /**

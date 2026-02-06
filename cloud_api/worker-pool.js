@@ -1,44 +1,30 @@
 /**
- * Worker Pool Manager for yt-dlp Execution
+ * Worker Pool Manager for yt-dlp Execution (Piscina-based)
  *
- * Manages a pool of worker threads to execute yt-dlp calls in parallel without
- * blocking the Node.js event loop. Implements queue management, worker recycling,
- * and automatic scaling based on load.
+ * Simplified worker pool using the Piscina library. Provides the same API as the
+ * original custom implementation, but delegates the complex worker management to
+ * Piscina while maintaining compatibility with existing code.
  *
  * Key Features:
- * - Dynamic worker pool (min-max sizing)
- * - Queue management with priority support
- * - Automatic worker recycling after max tasks
+ * - Dynamic worker pool (min-max sizing via Piscina)
+ * - Queue management with backpressure
+ * - Event emission for monitoring
  * - Graceful shutdown handling
  * @file Worker pool for non-blocking yt-dlp execution
  * @author YouTube Size Extension Team
- * @version 2.0.0
+ * @version 3.0.0
  */
 
-const { Worker } = require("worker_threads");
+const Piscina = require("piscina");
 const EventEmitter = require("events");
 const path = require("path");
-const { TIMEOUTS } = require("./config/constants");
 
 /**
  * Worker Pool Manager
  *
- * Manages worker threads and task queue for parallel yt-dlp execution.
- * Automatically scales workers based on load and recycles them to prevent memory leaks.
+ * Thin wrapper around Piscina that maintains API compatibility with the original
+ * custom worker pool implementation.
  * @augments EventEmitter
- * @example
- *   const pool = new WorkerPool({
- *     minWorkers: 2,
- *     maxWorkers: 10,
- *     workerScript: './ytdlp-worker.js'
- *   });
- *
- *   const result = await pool.execute({
- *     url: 'https://youtube.com/watch?v=xxx',
- *     timeout: 25000
- *   });
- *
- *   await pool.shutdown();
  */
 class WorkerPool extends EventEmitter {
     /**
@@ -48,7 +34,7 @@ class WorkerPool extends EventEmitter {
      * @param {number} [options.maxWorkers] - Maximum workers allowed
      * @param {string} [options.workerScript] - Path to worker script
      * @param {number} [options.taskTimeout] - Task timeout in ms
-     * @param {number} [options.maxTasksPerWorker] - Tasks before recycling
+     * @param {number} [options.maxTasksPerWorker] - Tasks before recycling (not used - Piscina handles this)
      * @param {number} [options.idleTimeout] - Idle time before terminating worker
      * @param {number} [options.maxQueueSize] - Maximum pending tasks before rejection
      */
@@ -60,17 +46,13 @@ class WorkerPool extends EventEmitter {
         this.workerScript =
             options.workerScript || path.join(__dirname, "ytdlp-worker.js");
         this.taskTimeout = options.taskTimeout || 30000;
-        this.maxTasksPerWorker = options.maxTasksPerWorker || 100;
+        this.maxTasksPerWorker = options.maxTasksPerWorker || 100; // Stored but not used
         this.idleTimeout = options.idleTimeout || 120000;
-        this.maxQueueSize = options.maxQueueSize || 100; // Backpressure limit
+        this.maxQueueSize = options.maxQueueSize || 100;
 
-        this.workers = new Map(); // workerId -> worker info
-        this.taskQueue = []; // pending tasks
-        this.activeTasks = 0;
-        this.nextWorkerId = 1;
         this.isShuttingDown = false;
 
-        // Stats
+        // Statistics tracking
         this.stats = {
             totalTasks: 0,
             completedTasks: 0,
@@ -82,245 +64,97 @@ class WorkerPool extends EventEmitter {
             workersDestroyed: 0,
         };
 
-        // Initialize minimum workers
-        this._initializeWorkers();
+        // Previous worker count for detecting worker creation/destruction
+        this._previousWorkerCount = 0;
+
+        // Create Piscina instance
+        this.piscina = new Piscina({
+            filename: this.workerScript,
+            minThreads: this.minWorkers,
+            maxThreads: this.maxWorkers,
+            idleTimeout: this.idleTimeout,
+            maxQueue: this.maxQueueSize,
+        });
+
+        // Track initial workers
+        this._monitorWorkerCount();
     }
 
     /**
-     * Initialize minimum number of workers
+     * Monitor worker count changes and emit events
      * @private
      */
-    _initializeWorkers() {
-        for (let i = 0; i < this.minWorkers; i++) {
-            this._createWorker();
+    _monitorWorkerCount() {
+        const currentCount = this.piscina.threads.length;
+
+        if (currentCount > this._previousWorkerCount) {
+            const created = currentCount - this._previousWorkerCount;
+            for (let i = 0; i < created; i++) {
+                this.stats.workersCreated++;
+                this.emit("workerCreated", {
+                    workerId: this.stats.workersCreated,
+                    totalWorkers: currentCount,
+                });
+            }
+        } else if (currentCount < this._previousWorkerCount) {
+            const destroyed = this._previousWorkerCount - currentCount;
+            for (let i = 0; i < destroyed; i++) {
+                this.stats.workersDestroyed++;
+                this.emit("workerDestroyed", {
+                    workerId: this.stats.workersDestroyed,
+                    totalWorkers: currentCount,
+                });
+            }
         }
+
+        this.stats.activeWorkers = currentCount;
+        this.stats.peakWorkers = Math.max(this.stats.peakWorkers, currentCount);
+        this._previousWorkerCount = currentCount;
     }
 
     /**
      * Pre-warm the worker pool by ensuring workers are ready to handle tasks
-     * This helps avoid cold-start latency on first requests
      * @async
      * @param {number} [timeoutMs] - Maximum time to wait for warm-up
      * @returns {Promise<{warmed: number, total: number}>} Warm-up result
      */
     async warmUp(timeoutMs = 5000) {
         const startTime = Date.now();
-        let warmedCount = 0;
-
-        // Wait for all workers to be ready (not busy, responding)
         const warmUpPromises = [];
 
-        for (const [workerId, workerInfo] of this.workers.entries()) {
-            if (workerInfo.busy) continue;
-
-            // Send a lightweight ping message to ensure worker is responsive
-            const warmUpPromise = new Promise((resolve) => {
-                const timeout = setTimeout(
-                    () => {
-                        resolve(false); // Worker didn't respond in time
-                    },
-                    Math.min(timeoutMs, TIMEOUTS.WARMUP_WORKER_TIMEOUT)
-                );
-
-                // Create a one-time handler for the warm-up response
-                const handler = (msg) => {
-                    if (msg && msg.warmUp === true) {
-                        clearTimeout(timeout);
-                        workerInfo.worker.off("message", handler);
-                        resolve(true);
-                    }
-                };
-
-                workerInfo.worker.on("message", handler);
-                workerInfo.worker.postMessage({ warmUp: true });
-            });
-
-            warmUpPromises.push(warmUpPromise);
+        // Run lightweight tasks to spin up minimum workers
+        for (let i = 0; i < this.minWorkers; i++) {
+            const warmUpTask = this.piscina
+                .run({ warmUp: true })
+                .then(() => true)
+                .catch(() => false);
+            warmUpPromises.push(warmUpTask);
         }
 
-        // Wait for all warm-up attempts to complete or timeout
+        // Wait for warm-up or timeout
         const results = await Promise.race([
             Promise.all(warmUpPromises),
             new Promise((resolve) =>
                 setTimeout(
                     () => resolve(warmUpPromises.map(() => false)),
-                    timeoutMs - (Date.now() - startTime)
+                    timeoutMs
                 )
             ),
         ]);
 
-        warmedCount = results.filter(Boolean).length;
+        const warmed = results.filter(Boolean).length;
+        this._monitorWorkerCount();
 
         this.emit("poolWarmed", {
-            warmed: warmedCount,
-            total: this.workers.size,
+            warmed,
+            total: this.piscina.threads.length,
             durationMs: Date.now() - startTime,
         });
 
         return {
-            warmed: warmedCount,
-            total: this.workers.size,
+            warmed,
+            total: this.piscina.threads.length,
         };
-    }
-
-    /**
-     * Create a new worker thread
-     * @private
-     * @returns {Object} Worker info object
-     */
-    _createWorker() {
-        if (this.isShuttingDown) return null;
-
-        const workerId = this.nextWorkerId++;
-        let worker;
-        try {
-            worker = new Worker(this.workerScript);
-        } catch (error) {
-            this.emit("workerError", {
-                workerId,
-                error: `Failed to create worker: ${error.message}`,
-            });
-            return null;
-        }
-
-        const workerInfo = {
-            id: workerId,
-            worker,
-            busy: false,
-            tasksCompleted: 0,
-            createdAt: Date.now(),
-            lastActivity: Date.now(),
-            currentTask: null,
-            idleTimer: null,
-        };
-
-        // Handle worker messages
-        worker.on("message", (result) => {
-            this._handleWorkerResult(workerId, result);
-        });
-
-        // Handle worker errors
-        worker.on("error", (error) => {
-            this._handleWorkerError(workerId, error);
-        });
-
-        // Handle worker exit
-        worker.on("exit", (code) => {
-            this._handleWorkerExit(workerId, code);
-        });
-
-        this.workers.set(workerId, workerInfo);
-        this.stats.workersCreated++;
-        this.stats.activeWorkers++;
-        this.stats.peakWorkers = Math.max(
-            this.stats.peakWorkers,
-            this.stats.activeWorkers
-        );
-
-        this.emit("workerCreated", {
-            workerId,
-            totalWorkers: this.workers.size,
-        });
-
-        return workerInfo;
-    }
-
-    /**
-     * Handle result from worker
-     * @private
-     * @param {number} workerId - Worker ID
-     * @param {Object} result - Result from worker
-     */
-    _handleWorkerResult(workerId, result) {
-        const workerInfo = this.workers.get(workerId);
-        if (!workerInfo || !workerInfo.currentTask) return;
-
-        const { resolve, reject } = workerInfo.currentTask;
-
-        // Clear task timeout
-        if (workerInfo.currentTask.timeoutId) {
-            clearTimeout(workerInfo.currentTask.timeoutId);
-        }
-
-        // Resolve or reject promise
-        if (result.success) {
-            this.stats.completedTasks++;
-            resolve(result.data);
-        } else {
-            this.stats.failedTasks++;
-            const error = new Error(result.error);
-            error.code = result.code;
-            error.stderr = result.stderr;
-            reject(error);
-        }
-
-        // Update worker state
-        workerInfo.busy = false;
-        workerInfo.tasksCompleted++;
-        workerInfo.lastActivity = Date.now();
-        workerInfo.currentTask = null;
-        this.activeTasks--;
-
-        // Check if worker should be recycled
-        if (workerInfo.tasksCompleted >= this.maxTasksPerWorker) {
-            this._recycleWorker(workerId);
-        } else {
-            // Start idle timer
-            this._startIdleTimer(workerId);
-            // Process next task
-            this._processNextTask();
-        }
-    }
-
-    /**
-     * Handle worker error
-     * @private
-     * @param {number} workerId - Worker ID
-     * @param {Error} error - Error from worker
-     */
-    _handleWorkerError(workerId, error) {
-        const workerInfo = this.workers.get(workerId);
-        if (!workerInfo) return;
-
-        this.emit("workerError", { workerId, error: error.message });
-
-        // Reject current task if any
-        if (workerInfo.currentTask) {
-            const { reject } = workerInfo.currentTask;
-            if (workerInfo.currentTask.timeoutId) {
-                clearTimeout(workerInfo.currentTask.timeoutId);
-            }
-            this.stats.failedTasks++;
-            reject(new Error(`Worker error: ${error.message}`));
-            this.activeTasks--;
-        }
-
-        // Terminate and replace worker
-        this._destroyWorker(workerId);
-        if (this.workers.size < this.minWorkers) {
-            this._createWorker();
-        }
-    }
-
-    /**
-     * Handle worker exit
-     * @private
-     * @param {number} workerId - Worker ID
-     * @param {number} code - Exit code
-     */
-    _handleWorkerExit(workerId, code) {
-        const workerInfo = this.workers.get(workerId);
-        if (!workerInfo) return;
-
-        this.emit("workerExit", { workerId, code });
-
-        // Clean up worker
-        this._destroyWorker(workerId);
-
-        // Replace if below minimum and not shutting down
-        if (!this.isShuttingDown && this.workers.size < this.minWorkers) {
-            this._createWorker();
-        }
     }
 
     /**
@@ -331,195 +165,96 @@ class WorkerPool extends EventEmitter {
      * @param {number} task.timeout - Timeout in ms
      * @param {number} task.maxBuffer - Max buffer size
      * @param {number} [task.retryAttempt] - Retry attempt number
-     * @param {string|null} [task.cookies] - Cookies in Netscape format for authentication
+     * @param {string|null} [task.cookies] - Cookies in Netscape format
      * @returns {Promise<Object>} yt-dlp metadata
      * @throws {Error} If task fails or times out
      */
-    execute(task) {
+    async execute(task) {
         if (this.isShuttingDown) {
-            return Promise.reject(new Error("Worker pool is shutting down"));
+            throw new Error("Worker pool is shutting down");
         }
 
-        // Backpressure check BEFORE incrementing stats to avoid counting rejected tasks
-        const availableWorker = this._getAvailableWorker();
-        if (!availableWorker && this.taskQueue.length >= this.maxQueueSize) {
+        // Check backpressure
+        if (this.piscina.queueSize >= this.maxQueueSize) {
             const error = new Error(
                 `Task queue full (${this.maxQueueSize} pending). Try again later.`
             );
             error.code = "QUEUE_FULL";
             this.emit("queueFull", {
-                queueLength: this.taskQueue.length,
+                queueLength: this.piscina.queueSize,
                 maxQueueSize: this.maxQueueSize,
             });
-            return Promise.reject(error);
+            throw error;
         }
 
         this.stats.totalTasks++;
 
-        return new Promise((resolve, reject) => {
-            const taskInfo = {
-                ...task,
-                resolve,
-                reject,
-                enqueuedAt: Date.now(),
-            };
-
-            // Try to execute immediately if worker available
-            if (availableWorker) {
-                this._executeTask(availableWorker, taskInfo);
-            } else {
-                // Queue task (we already checked queue size above)
-                this.taskQueue.push(taskInfo);
-                this.stats.queuedTasks = this.taskQueue.length;
-                this.emit("taskQueued", {
-                    queueLength: this.taskQueue.length,
-                });
-
-                // Scale up if needed
-                if (
-                    this.workers.size < this.maxWorkers &&
-                    this.taskQueue.length > 0
-                ) {
-                    this._createWorker();
-                }
-            }
-        });
-    }
-
-    /**
-     * Get available worker or null
-     * @private
-     * @returns {Object|null} Available worker info
-     */
-    _getAvailableWorker() {
-        for (const workerInfo of this.workers.values()) {
-            if (!workerInfo.busy && !this.isShuttingDown) {
-                return workerInfo;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Execute task on worker
-     * @private
-     * @param {Object} workerInfo - Worker info
-     * @param {Object} taskInfo - Task info with resolve/reject
-     */
-    _executeTask(workerInfo, taskInfo) {
-        workerInfo.busy = true;
-        workerInfo.currentTask = taskInfo;
-        workerInfo.lastActivity = Date.now();
-        this.activeTasks++;
-
-        // Clear idle timer
-        if (workerInfo.idleTimer) {
-            clearTimeout(workerInfo.idleTimer);
-            workerInfo.idleTimer = null;
+        // Emit taskQueued if there's a queue
+        if (this.piscina.queueSize > 0) {
+            this.emit("taskQueued", {
+                queueLength: this.piscina.queueSize,
+            });
         }
 
-        // Set task timeout
-        const timeoutId = setTimeout(() => {
-            if (workerInfo.currentTask === taskInfo) {
+        // Execute with timeout using AbortController
+        const controller = new AbortController();
+        const timeoutId = setTimeout(
+            () => controller.abort(),
+            this.taskTimeout
+        );
+
+        try {
+            const result = await this.piscina.run(
+                {
+                    url: task.url,
+                    timeout: task.timeout,
+                    maxBuffer: task.maxBuffer,
+                    retryAttempt: task.retryAttempt || 0,
+                    cookies: task.cookies || null,
+                },
+                { signal: controller.signal }
+            );
+
+            clearTimeout(timeoutId);
+            this._monitorWorkerCount();
+
+            // Check if worker returned error result
+            if (result && result.success === false) {
                 this.stats.failedTasks++;
-                taskInfo.reject(new Error("Task timeout exceeded"));
-                this._recycleWorker(workerInfo.id);
+                const error = new Error(result.error || "Worker task failed");
+                error.code = result.code;
+                error.stderr = result.stderr;
+                throw error;
             }
-        }, this.taskTimeout);
 
-        taskInfo.timeoutId = timeoutId;
+            this.stats.completedTasks++;
+            return result.data;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            this._monitorWorkerCount();
 
-        // Send task to worker
-        workerInfo.worker.postMessage({
-            url: taskInfo.url,
-            timeout: taskInfo.timeout,
-            maxBuffer: taskInfo.maxBuffer,
-            retryAttempt: taskInfo.retryAttempt || 0,
-            cookies: taskInfo.cookies || null,
-        });
-    }
-
-    /**
-     * Process next task from queue
-     * @private
-     */
-    _processNextTask() {
-        if (this.taskQueue.length === 0 || this.isShuttingDown) return;
-
-        const availableWorker = this._getAvailableWorker();
-        if (!availableWorker) return;
-
-        const task = this.taskQueue.shift();
-        this.stats.queuedTasks = this.taskQueue.length;
-
-        this._executeTask(availableWorker, task);
-    }
-
-    /**
-     * Start idle timer for worker
-     * @private
-     * @param {number} workerId - Worker ID
-     */
-    _startIdleTimer(workerId) {
-        const workerInfo = this.workers.get(workerId);
-        if (!workerInfo || workerInfo.busy) return;
-
-        // Clear existing timer
-        if (workerInfo.idleTimer) {
-            clearTimeout(workerInfo.idleTimer);
-        }
-
-        // Only terminate if above minimum workers
-        if (this.workers.size <= this.minWorkers) return;
-
-        workerInfo.idleTimer = setTimeout(() => {
-            if (!workerInfo.busy && this.workers.size > this.minWorkers) {
-                this._destroyWorker(workerId);
+            // If we already incremented failedTasks above, don't do it again
+            if (!(error.code && error.stderr !== undefined)) {
+                this.stats.failedTasks++;
             }
-        }, this.idleTimeout);
-    }
 
-    /**
-     * Recycle worker (terminate and create new one)
-     * @private
-     * @param {number} workerId - Worker ID
-     */
-    _recycleWorker(workerId) {
-        this._destroyWorker(workerId);
-        if (!this.isShuttingDown && this.workers.size < this.minWorkers) {
-            this._createWorker();
+            // Handle AbortError (timeout)
+            if (error.name === "AbortError") {
+                const timeoutError = new Error("Task timeout exceeded");
+                timeoutError.code = "TIMEOUT";
+                throw timeoutError;
+            }
+
+            // Re-throw worker errors
+            if (error.message) {
+                this.emit("workerError", {
+                    workerId: "unknown",
+                    error: error.message,
+                });
+            }
+
+            throw error;
         }
-    }
-
-    /**
-     * Destroy worker
-     * @private
-     * @param {number} workerId - Worker ID
-     */
-    _destroyWorker(workerId) {
-        const workerInfo = this.workers.get(workerId);
-        if (!workerInfo) return;
-
-        // Clear timers
-        if (workerInfo.idleTimer) {
-            clearTimeout(workerInfo.idleTimer);
-        }
-        if (workerInfo.currentTask && workerInfo.currentTask.timeoutId) {
-            clearTimeout(workerInfo.currentTask.timeoutId);
-        }
-
-        // Terminate worker
-        workerInfo.worker.terminate().catch(() => {});
-
-        // Remove from pool
-        this.workers.delete(workerId);
-        this.stats.workersDestroyed++;
-        this.stats.activeWorkers--;
-
-        this.emit("workerDestroyed", {
-            workerId,
-            totalWorkers: this.workers.size,
-        });
     }
 
     /**
@@ -527,11 +262,14 @@ class WorkerPool extends EventEmitter {
      * @returns {Object} Pool stats
      */
     getStats() {
+        this._monitorWorkerCount();
+
         return {
             ...this.stats,
-            queueLength: this.taskQueue.length,
-            activeWorkers: this.workers.size,
-            activeTasks: this.activeTasks,
+            queueLength: this.piscina.queueSize,
+            activeWorkers: this.piscina.threads.length,
+            activeTasks: this.piscina.threads.length - this.piscina.queueSize,
+            queuedTasks: this.piscina.queueSize,
             config: {
                 minWorkers: this.minWorkers,
                 maxWorkers: this.maxWorkers,
@@ -551,29 +289,25 @@ class WorkerPool extends EventEmitter {
         if (this.isShuttingDown) return;
 
         this.isShuttingDown = true;
-        this.emit("shutdown", { activeTasks: this.activeTasks });
+        this.emit("shutdown", { activeTasks: this.piscina.queueSize });
 
-        // Wait for active tasks or timeout
-        const startTime = Date.now();
-        while (this.activeTasks > 0 && Date.now() - startTime < timeout) {
-            await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-
-        // Terminate all workers
-        const terminationPromises = Array.from(this.workers.keys()).map(
-            (workerId) => {
-                const workerInfo = this.workers.get(workerId);
-                return workerInfo.worker.terminate().catch(() => {});
-            }
-        );
-
-        await Promise.all(terminationPromises);
-        this.workers.clear();
-
-        // Reject queued tasks
-        while (this.taskQueue.length > 0) {
-            const task = this.taskQueue.shift();
-            task.reject(new Error("Pool shutdown"));
+        let timeoutId;
+        try {
+            // Piscina's close() drains tasks and terminates workers
+            await Promise.race([
+                this.piscina.close(),
+                new Promise((_, reject) => {
+                    timeoutId = setTimeout(
+                        () => reject(new Error("Shutdown timeout")),
+                        timeout
+                    );
+                }),
+            ]);
+            if (timeoutId) clearTimeout(timeoutId);
+        } catch (error) {
+            if (timeoutId) clearTimeout(timeoutId);
+            // Force destroy on timeout
+            await this.piscina.destroy();
         }
 
         this.emit("shutdownComplete");

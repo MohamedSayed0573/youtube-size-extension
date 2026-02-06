@@ -108,128 +108,35 @@ workerPool.on("taskQueued", ({ queueLength }) => {
 // ============================================
 
 let isShuttingDown = false;
-let shutdownInProgress = null; // Track the shutdown promise
 const activeConnections = new Set();
 
 const shutdown = async (signal) => {
-    // If already shutting down, wait for existing shutdown instead of force exit
-    if (isShuttingDown) {
-        logger.warn(
-            { signal },
-            "Shutdown already in progress, waiting for completion"
-        );
-        // Wait for existing shutdown to complete instead of immediately force-exiting
-        if (shutdownInProgress) {
-            try {
-                await shutdownInProgress;
-            } catch (e) {
-                // Shutdown failed, force exit
-                logger.error(
-                    { error: e.message },
-                    "Shutdown failed, forcing exit"
-                );
-                process.exit(1);
-            }
-        }
-        return;
-    }
-
+    if (isShuttingDown) return;
     isShuttingDown = true;
-    logger.info(
-        {
-            signal,
-            activeConnections: activeConnections.size,
-            workerPoolStats: workerPool.getStats(),
-        },
-        "Graceful shutdown initiated"
-    );
+
+    logger.info({ signal }, "Graceful shutdown initiated");
 
     const shutdownTimeout = setTimeout(() => {
-        logger.error(
-            { timeout: TIMEOUTS.SHUTDOWN_GRACE },
-            "Shutdown timeout exceeded, forcing exit"
-        );
+        logger.error("Shutdown timeout exceeded, forcing exit");
         process.exit(1);
     }, TIMEOUTS.SHUTDOWN_GRACE + 5000);
 
-    // Create shutdown promise so concurrent signals can wait
-    shutdownInProgress = (async () => {
-        try {
-            // Stage 1: Stop accepting new connections
-            if (server) {
-                logger.info("Closing HTTP server");
-                await new Promise((resolve) => {
-                    server.close(resolve);
-                });
-                logger.info("HTTP server closed");
-            }
-
-            // Stage 2: Drain active connections
-            logger.info(
-                { activeConnections: activeConnections.size },
-                "Draining active connections"
-            );
-            const drainStart = Date.now();
-            while (
-                activeConnections.size > 0 &&
-                Date.now() - drainStart < 5000
-            ) {
-                await new Promise((resolve) => setTimeout(resolve, 100));
-            }
-            logger.info(
-                { remaining: activeConnections.size },
-                "Connection draining complete"
-            );
-
-            // Stage 3: Shutdown worker pool
-            try {
-                logger.info("Shutting down worker pool");
-                await workerPool.shutdown(TIMEOUTS.SHUTDOWN_GRACE);
-                logger.info("Worker pool shut down");
-            } catch (error) {
-                logger.error(
-                    { error: error.message },
-                    "Worker pool shutdown error"
-                );
-            }
-
-            // Stage 4: Close Redis connection
-            if (redisClient) {
-                try {
-                    logger.info("Closing Redis connection");
-                    await redisClient.quit();
-                    logger.info("Redis connection closed");
-                } catch (error) {
-                    logger.error(
-                        { error: error.message },
-                        "Redis shutdown error"
-                    );
-                }
-            }
-
-            // Stage 5: Flush Sentry events
-            try {
-                logger.info("Flushing Sentry events");
-                await Sentry.close(2000);
-                logger.info("Sentry events flushed");
-            } catch (error) {
-                logger.error({ error: error.message }, "Sentry flush error");
-            }
-
-            clearTimeout(shutdownTimeout);
-            logger.info({ signal }, "Graceful shutdown completed successfully");
-            process.exit(0);
-        } catch (error) {
-            clearTimeout(shutdownTimeout);
-            logger.fatal(
-                { error: error.message },
-                "Fatal error during shutdown"
-            );
-            process.exit(1);
+    try {
+        if (server) {
+            await new Promise((resolve) => server.close(resolve));
         }
-    })();
+        await workerPool.shutdown(TIMEOUTS.SHUTDOWN_GRACE);
+        if (redisClient) await redisClient.quit().catch(() => {});
+        await Sentry.close(2000).catch(() => {});
 
-    await shutdownInProgress;
+        clearTimeout(shutdownTimeout);
+        logger.info({ signal }, "Graceful shutdown completed");
+        process.exit(0);
+    } catch (error) {
+        clearTimeout(shutdownTimeout);
+        logger.fatal({ error: error.message }, "Fatal error during shutdown");
+        process.exit(1);
+    }
 };
 
 process.on("uncaughtException", (error) => {

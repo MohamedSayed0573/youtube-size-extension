@@ -1,9 +1,9 @@
 /**
- * Worker Thread for yt-dlp Execution
+ * Worker Thread for yt-dlp Execution (Piscina-based)
  *
  * This worker handles yt-dlp subprocess execution in a separate thread to prevent
- * blocking the main Node.js event loop. It receives messages via parentPort with
- * URL and configuration, executes yt-dlp, and returns the result.
+ * blocking the main Node.js event loop. Piscina calls the exported function with
+ * task configuration, executes yt-dlp, and returns the result.
  *
  * Key Features:
  * - Runs in isolated Worker thread (no event loop blocking)
@@ -12,15 +12,14 @@
  * - Automatic cleanup on completion
  * - Defense-in-depth URL validation before execution
  *
- * Message Protocol:
+ * Function Signature:
  * Input: { url: string, timeout: number, maxBuffer: number, retryAttempt: number, cookies?: string }
  * Output: { success: true, data: Object } | { success: false, error: string, code?: string }
  * @file Worker thread for non-blocking yt-dlp execution
  * @author YouTube Size Extension Team
- * @version 2.0.0
+ * @version 3.0.0
  */
 
-const { parentPort } = require("worker_threads");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 const fs = require("fs");
@@ -177,30 +176,19 @@ async function executeYtdlp(
     }
 }
 
-// Listen for messages from main thread
-if (parentPort) {
-    parentPort.on("message", async (task) => {
-        // Handle warm-up ping
-        if (task && task.warmUp === true) {
-            parentPort.postMessage({ warmUp: true });
-            return;
-        }
+/**
+ * Main worker function for Piscina
+ * Piscina calls this function with the task data
+ * @param {Object} task - Task configuration
+ * @returns {Promise<Object>} Result object
+ */
+module.exports = async function (task) {
+    // Handle warm-up ping
+    if (task && task.warmUp === true) {
+        return { warmUp: true };
+    }
 
-        const {
-            url,
-            timeout,
-            maxBuffer,
-            retryAttempt = 0,
-            cookies = null,
-        } = task;
+    const { url, timeout, maxBuffer, retryAttempt = 0, cookies = null } = task;
 
-        const result = await executeYtdlp(
-            url,
-            timeout,
-            maxBuffer,
-            retryAttempt,
-            cookies
-        );
-        parentPort.postMessage(result);
-    });
-}
+    return await executeYtdlp(url, timeout, maxBuffer, retryAttempt, cookies);
+};

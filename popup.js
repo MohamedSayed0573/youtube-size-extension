@@ -208,87 +208,11 @@
         }
     }
 
-    // Lightweight helpers: settings in persistent local, cache in fast session (fallback to local)
-    const ls =
-        typeof window !== "undefined" && window.localStorage
-            ? window.localStorage
-            : null;
-    const settingsArea =
-        typeof chrome !== "undefined" && chrome.storage && chrome.storage.local
-            ? chrome.storage.local
-            : null;
-    const cacheArea =
-        typeof chrome !== "undefined" &&
-        chrome.storage &&
-        chrome.storage.session
-            ? chrome.storage.session
-            : settingsArea;
-
-    /**
-     *
-     * @param area
-     */
-    function makeGet(area) {
-        return (keys) =>
-            new Promise((resolve) => {
-                if (area && typeof area.get === "function") {
-                    area.get(keys, resolve);
-                } else if (ls) {
-                    const result = {};
-                    try {
-                        const arr = Array.isArray(keys)
-                            ? keys
-                            : Object.keys(keys || {});
-                        for (const k of arr) {
-                            const raw = ls.getItem(k);
-                            if (raw != null) {
-                                try {
-                                    result[k] = JSON.parse(raw);
-                                } catch (e) {
-                                    Logger.warn(
-                                        "Failed to parse localStorage item",
-                                        e
-                                    );
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        Logger.warn("Failed to access localStorage", e);
-                    }
-                    resolve(result);
-                } else {
-                    resolve({});
-                }
-            });
-    }
-    /**
-     *
-     * @param area
-     */
-    function makeSet(area) {
-        return (items) =>
-            new Promise((resolve) => {
-                if (area && typeof area.set === "function") {
-                    area.set(items, resolve);
-                } else if (ls) {
-                    try {
-                        for (const [k, v] of Object.entries(items || {})) {
-                            ls.setItem(k, JSON.stringify(v));
-                        }
-                    } catch (e) {
-                        Logger.warn("Failed to set localStorage", e);
-                    }
-                    resolve();
-                } else {
-                    resolve();
-                }
-            });
-    }
-
-    const settingsGet = makeGet(settingsArea);
-    const settingsSet = makeSet(settingsArea);
-    const cacheGet = makeGet(cacheArea);
-    const cacheSet = makeSet(cacheArea);
+    // Storage helpers: settings in persistent local, cache in fast session (fallback to local)
+    const cacheArea = chrome.storage.session || chrome.storage.local;
+    const settingsGet = (keys) => chrome.storage.local.get(keys);
+    const cacheGet = (keys) => cacheArea.get(keys);
+    const cacheSet = (items) => cacheArea.set(items);
 
     // Cross-browser Promise wrapper for tabs.query
     /**
