@@ -26,7 +26,7 @@ jobs:
                   username: ${{ secrets.DOCKER_USERNAME }}
                   password: ${{ secrets.DOCKER_PASSWORD }}
 
-            - name: Build and push
+            - name: Build and push API
               uses: docker/build-push-action@v5
               with:
                   context: ./cloud_api
@@ -36,6 +36,18 @@ jobs:
                       ${{ secrets.DOCKER_USERNAME }}/ytdlp-api:${{ github.sha }}
                   build-args: |
                       YTDLP_VERSION=${{ github.run_id }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+
+            - name: Build and push HAProxy
+              uses: docker/build-push-action@v5
+              with:
+                  context: ./cloud_api
+                  file: ./cloud_api/Dockerfile.haproxy
+                  push: true
+                  tags: |
+                      ${{ secrets.DOCKER_USERNAME }}/ytdlp-haproxy:latest
+                      ${{ secrets.DOCKER_USERNAME }}/ytdlp-haproxy:${{ github.sha }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
 
@@ -91,22 +103,35 @@ jobs:
                       # Ensure proper permissions
                       chmod 600 .env
 
-                      # Pull latest image
+                      # Create network if not exists
+                      sudo docker network create ytdlp-network 2>/dev/null || true
+
+                      # Pull latest images
                       sudo docker pull ${DOCKER_USERNAME}/ytdlp-api:latest
+                      sudo docker pull ${DOCKER_USERNAME}/ytdlp-haproxy:latest
 
-                      # Stop and remove existing container
-                      sudo docker stop ytdlp-api 2>/dev/null || true
-                      sudo docker rm ytdlp-api 2>/dev/null || true
+                      # Stop and remove existing containers
+                      sudo docker stop ytdlp-haproxy ytdlp-api 2>/dev/null || true
+                      sudo docker rm ytdlp-haproxy ytdlp-api 2>/dev/null || true
 
-                      # Run new container
-                      # Using host networking or mapping port 80
+                      # Run API container (internal)
                       sudo docker run -d \
                         --name ytdlp-api \
                         --restart unless-stopped \
-                        -p 80:80 \
+                        --network ytdlp-network \
+                        --network-alias api \
                         --env-file .env \
                         -v /opt/ytdlp-api/logs:/app/logs \
                         ${DOCKER_USERNAME}/ytdlp-api:latest
+
+                      # Run HAProxy container (exposed)
+                      sudo docker run -d \
+                        --name ytdlp-haproxy \
+                        --restart unless-stopped \
+                        --network ytdlp-network \
+                        -p 80:80 \
+                        -p 8404:8404 \
+                        ${DOCKER_USERNAME}/ytdlp-haproxy:latest
 
                       # Verify health with retries (allow 40s for startup)
                       echo "Waiting for application to start..."
@@ -120,4 +145,5 @@ jobs:
                       done
                       echo "❌ Health check failed after 40 seconds"
                       sudo docker logs ytdlp-api --tail 50
+                      sudo docker logs ytdlp-haproxy --tail 50
                       exit 1

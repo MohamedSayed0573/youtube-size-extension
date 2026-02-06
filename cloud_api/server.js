@@ -63,6 +63,9 @@ const logger = pino({
 
 const app = express();
 
+// Trust proxy headers from HAProxy
+app.set("trust proxy", 1);
+
 // ============================================
 // Redis Setup
 // ============================================
