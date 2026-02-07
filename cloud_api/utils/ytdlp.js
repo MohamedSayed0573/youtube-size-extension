@@ -4,9 +4,14 @@
  */
 
 const Sentry = require("@sentry/node");
-const { VIDEO_FORMAT_IDS, AUDIO_FALLBACK_ID } = require("../config/constants");
+const {
+    VIDEO_FORMAT_IDS,
+    AUDIO_FALLBACK_ID,
+    RESOLUTIONS_WITH_VARIANTS,
+} = require("../config/constants");
 const { CONFIG } = require("../config/env");
 const { logger } = require("../config/logger");
+const { TimeoutError, NotFoundError, UpstreamError } = require("./errors");
 const { humanizeBytes, humanizeDuration, formatUptime } = require("./format");
 
 /**
@@ -185,12 +190,14 @@ async function extractInfo(url, workerPool, maxRetries = 2, cookies = null) {
     });
 
     if (lastError.code === "TIMEOUT") {
-        throw new Error("yt-dlp timed out while fetching metadata");
+        throw new TimeoutError("yt-dlp timed out while fetching metadata");
     }
     if (lastError.code === "NOT_FOUND") {
-        throw new Error("yt-dlp executable not found. Please install yt-dlp.");
+        throw new NotFoundError(
+            "yt-dlp executable not found. Please install yt-dlp."
+        );
     }
-    throw new Error(
+    throw new UpstreamError(
         `Failed to fetch metadata after ${maxRetries + 1} attempts: ${lastError.message}`
     );
 }
@@ -227,12 +234,6 @@ function computeSizes(meta, durationHint) {
             targetFormatIds.add(id);
         }
     }
-    // Add specific codec variants
-    targetFormatIds.add("299"); // 1080p H.264
-    targetFormatIds.add("303"); // 1080p VP9
-    targetFormatIds.add("399"); // 1080p AV1
-    targetFormatIds.add("308"); // 1440p VP9
-    targetFormatIds.add("400"); // 1440p AV1
     targetFormatIds.add(AUDIO_FALLBACK_ID);
 
     // Single pass: build format size map for only the IDs we care about
@@ -284,14 +285,10 @@ function computeSizes(meta, durationHint) {
         }
     }
 
-    // Expose specific codec variants for 1080p and 1440p (use pre-computed sizes)
-    const codecVariants = [
-        ["1080p", ["299", "303", "399"]],
-        ["1440p", ["308", "400"]],
-    ];
-
-    for (const [res, fids] of codecVariants) {
-        for (const fid of fids) {
+    // Expose specific codec variants for identified resolutions
+    for (const res of RESOLUTIONS_WITH_VARIANTS) {
+        const ids = VIDEO_FORMAT_IDS[res] || [];
+        for (const fid of ids) {
             const sz = formatSizes.get(fid);
             if (sz) {
                 bytesOut[`s${res}_${fid}`] = audioSize ? sz + audioSize : sz;

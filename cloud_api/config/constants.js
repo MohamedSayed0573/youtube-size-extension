@@ -27,9 +27,11 @@ const VIDEO_FORMAT_IDS = {
     "360p": ["396"],
     "480p": ["397"],
     "720p": ["398"],
-    "1080p": ["399", "299", "303"],
-    "1440p": ["400", "308"],
+    "1080p": ["299", "303", "399"],
+    "1440p": ["308", "400"],
 };
+
+const RESOLUTIONS_WITH_VARIANTS = ["1080p", "1440p"];
 
 const AUDIO_FALLBACK_ID = "251";
 
@@ -37,5 +39,6 @@ module.exports = {
     TIMEOUTS,
     LIMITS,
     VIDEO_FORMAT_IDS,
+    RESOLUTIONS_WITH_VARIANTS,
     AUDIO_FALLBACK_ID,
 };

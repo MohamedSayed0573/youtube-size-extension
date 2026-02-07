@@ -119,6 +119,10 @@ function initializeRedis() {
                 ]);
                 return ready;
             } catch (error) {
+                logger.debug(
+                    { error: error.message },
+                    "Redis waitForConnection failed"
+                );
                 return false;
             }
         },

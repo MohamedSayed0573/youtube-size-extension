@@ -154,17 +154,13 @@ function createApiRoutes(workerPool, authMiddleware, rateLimiter) {
                 );
 
                 // Determine appropriate status code
-                let statusCode = 502;
-                if (error.message.includes("timed out")) {
-                    statusCode = 504;
-                } else if (error.message.includes("not found")) {
-                    statusCode = 503;
-                }
+                const statusCode = error.statusCode || 500;
 
                 res.status(statusCode).json({
                     ok: false,
                     error: error.message,
                     requestId: req.requestId,
+                    code: error.code || "INTERNAL_ERROR",
                 });
             }
         }

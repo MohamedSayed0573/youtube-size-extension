@@ -95,71 +95,9 @@ function createHealthRoutes(workerPool, redisState, ytdlpPath) {
         }
 
         try {
-            const start = Date.now();
-            await redisClient.ping();
-            const latency = Date.now() - start;
-
-            // Get Redis server info
-            const infoRaw = await redisClient.info();
-            const info = {};
-
-            // Parse INFO response into sections
-            let currentSection = "general";
-            for (const line of infoRaw.split("\n")) {
-                const trimmed = line.trim();
-                if (trimmed.startsWith("#")) {
-                    currentSection = trimmed.slice(2).toLowerCase();
-                    info[currentSection] = {};
-                } else if (trimmed.includes(":")) {
-                    const [key, value] = trimmed.split(":");
-                    if (!info[currentSection]) info[currentSection] = {};
-                    info[currentSection][key] = value;
-                }
-            }
-
-            // Get key count from dbsize
-            const dbsize = await redisClient.dbSize();
-
-            res.json({
-                ok: true,
-                redis: "connected",
-                ready: getRedisReady(),
-                latency: `${latency}ms`,
-                server: {
-                    version: info.server?.redis_version || "unknown",
-                    mode: info.server?.redis_mode || "standalone",
-                    os: info.server?.os || "unknown",
-                    uptimeSeconds:
-                        parseInt(info.server?.uptime_in_seconds) || 0,
-                    uptimeDays: parseInt(info.server?.uptime_in_days) || 0,
-                },
-                memory: {
-                    used: info.memory?.used_memory_human || "unknown",
-                    peak: info.memory?.used_memory_peak_human || "unknown",
-                    rss: info.memory?.used_memory_rss_human || "unknown",
-                    fragmentation:
-                        parseFloat(info.memory?.mem_fragmentation_ratio) || 0,
-                },
-                clients: {
-                    connected: parseInt(info.clients?.connected_clients) || 0,
-                    blocked: parseInt(info.clients?.blocked_clients) || 0,
-                    maxInputBuffer:
-                        info.clients?.client_recent_max_input_buffer || "0",
-                    maxOutputBuffer:
-                        info.clients?.client_recent_max_output_buffer || "0",
-                },
-                stats: {
-                    totalConnections:
-                        parseInt(info.stats?.total_connections_received) || 0,
-                    totalCommands:
-                        parseInt(info.stats?.total_commands_processed) || 0,
-                    opsPerSecond:
-                        parseInt(info.stats?.instantaneous_ops_per_sec) || 0,
-                    keyspace: {
-                        keys: dbsize,
-                    },
-                },
-            });
+            // Logic extracted to config/redis.js to avoid "Fat Controller"
+            const result = await redisState.getDetailedHealth();
+            res.json(result);
         } catch (error) {
             logger.error(
                 { error: error.message },

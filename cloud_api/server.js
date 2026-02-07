@@ -65,25 +65,6 @@ const workerPool = new WorkerPool({
     idleTimeout: TIMEOUTS.WORKER_IDLE,
 });
 
-// Event handlers
-workerPool.on("workerCreated", ({ workerId, totalWorkers }) => {
-    logger.info({ workerId, totalWorkers }, "Worker created");
-});
-
-workerPool.on("workerDestroyed", ({ workerId, totalWorkers }) => {
-    logger.info({ workerId, totalWorkers }, "Worker destroyed");
-});
-
-workerPool.on("workerError", ({ workerId, error }) => {
-    logger.error({ workerId, error }, "Worker error");
-});
-
-workerPool.on("taskQueued", ({ queueLength }) => {
-    if (queueLength > 5) {
-        logger.warn({ queueLength }, "Task queue building up");
-    }
-});
-
 // ============================================
 // Graceful Shutdown Handling
 // ============================================
@@ -107,8 +88,18 @@ const shutdown = async (signal) => {
             await new Promise((resolve) => server.close(resolve));
         }
         await workerPool.shutdown(TIMEOUTS.SHUTDOWN_GRACE);
-        if (redisClient) await redisClient.quit().catch(() => {});
-        await Sentry.close(2000).catch(() => {});
+        if (redisClient)
+            await redisClient
+                .quit()
+                .catch((err) =>
+                    logger.warn(
+                        { error: err.message },
+                        "Error closing Redis connection"
+                    )
+                );
+        await Sentry.close(2000).catch((err) =>
+            logger.warn({ error: err.message }, "Error closing Sentry")
+        );
 
         clearTimeout(shutdownTimeout);
         logger.info({ signal }, "Graceful shutdown completed");
