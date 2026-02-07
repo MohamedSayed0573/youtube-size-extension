@@ -31,12 +31,32 @@
       }
     ],
     "prefer-const": "warn",
-    "no-var": "warn",
+    "no-var": "error",
     "eqeqeq": ["warn", "always"],
     "curly": ["warn", "multi-line"],
     "no-eval": "error",
     "no-implied-eval": "error",
     "no-new-func": "error",
+    "no-debugger": "error",
+    "no-throw-literal": "error",
+    "prefer-promise-reject-errors": "error",
+    "no-shadow": "warn",
+    "no-shadow-restricted-names": "error",
+    "no-unused-expressions": "warn",
+    "no-await-in-loop": "warn",
+    "no-return-await": "warn",
+    "require-await": "warn",
+    "no-promise-executor-return": "error",
+    "complexity": ["warn", 15],
+    "max-depth": ["warn", 4],
+    "max-nested-callbacks": ["warn", 3],
+    "consistent-return": "warn",
+    "no-empty-function": [
+      "warn",
+      {
+        "allow": ["arrowFunctions"]
+      }
+    ],
     "jsdoc/require-jsdoc": [
       "warn",
       {

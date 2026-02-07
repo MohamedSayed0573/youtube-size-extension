@@ -95,7 +95,7 @@
         const vids = document.querySelectorAll("video");
         for (const v of vids) {
             if (!v) continue;
-            if (!v.src && v.querySelector("source") == null) continue;
+            if (!v.src && v.querySelector("source") === null) continue;
             return v;
         }
         return null;
@@ -275,7 +275,7 @@
     // Listen for popup requests
     try {
         chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-            if (!msg) return;
+            if (!msg) return false;
             if (msg.type === "get_current_res") {
                 const v = getVideoEl();
                 const vh = v ? v.videoHeight || 0 : 0;
@@ -300,6 +300,7 @@
                 }
                 return true;
             }
+            return false;
         });
     } catch (e) {
         Logger.warn("Failed to add runtime message listener", e);

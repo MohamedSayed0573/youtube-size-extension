@@ -16,6 +16,7 @@
  * @version 0.2.0
  */
 /* global Logger */
+/* eslint-disable jsdoc/require-returns, jsdoc/require-param-description, jsdoc/require-jsdoc */
 
 (function () {
     /** @constant {Object} Default settings values */
@@ -42,19 +43,19 @@
      *
      * @param keys
      */
-    async function storageGet(keys) {
-        return new Promise((resolve) =>
-            chrome.storage.local.get(keys, resolve)
-        );
+    function storageGet(keys) {
+        return new Promise((resolve) => {
+            chrome.storage.local.get(keys, resolve);
+        });
     }
     /**
      *
      * @param items
      */
-    async function storageSet(items) {
-        return new Promise((resolve) =>
-            chrome.storage.local.set(items, resolve)
-        );
+    function storageSet(items) {
+        return new Promise((resolve) => {
+            chrome.storage.local.set(items, resolve);
+        });
     }
 
     /**

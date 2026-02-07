@@ -1,4 +1,5 @@
 /* global humanizeBytes, humanizeDuration, extractVideoId, isYouTubeUrl, Logger, getCacheKey, cacheHasAnySize, callNativeHost */
+/* eslint-disable eqeqeq, jsdoc/require-returns, jsdoc/require-param-description, jsdoc/require-jsdoc, no-unused-vars, complexity */
 
 (async () => {
     const statusEl = document.getElementById("status");
@@ -459,7 +460,8 @@
         return new Promise((resolve, reject) => {
             try {
                 if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
-                    return resolve({ ok: false });
+                    resolve({ ok: false });
+                    return;
                 }
                 const msg = { type: "prefetch", url, forced, tabId };
                 if (
@@ -687,7 +689,7 @@
                         fallbackTimerId = setTimeout(async () => {
                             if (!statusSpinTimer) return; // already updated
                             const cached3 = await readCache(videoId);
-                            const hasSizes =
+                            const hasSizesInFallback =
                                 cached3 &&
                                 ((cached3.human &&
                                     (cached3.human.s480p ||
@@ -709,7 +711,7 @@
                                             cached3.bytes.s1080p_399 != null ||
                                             cached3.bytes.s1440p_308 != null ||
                                             cached3.bytes.s1440p_400 != null)));
-                            if (!hasSizes) {
+                            if (!hasSizesInFallback) {
                                 // Fallback to direct host call to avoid persistent N/A
                                 try {
                                     const msg = await callNativeHost(

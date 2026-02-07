@@ -249,7 +249,7 @@ function extractVideoId(url) {
  *   humanizeBytes(null) // null
  */
 function humanizeBytes(n) {
-    if (n == null || !isFinite(n)) return null;
+    if (n === null || n === undefined || !isFinite(n)) return null;
     const units = ["B", "KB", "MB", "GB", "TB"];
     let v = Number(n);
     let i = 0;
@@ -275,7 +275,14 @@ function humanizeBytes(n) {
  *   humanizeDuration(null) // null
  */
 function humanizeDuration(seconds) {
-    if (seconds == null || !isFinite(seconds) || seconds <= 0) return null;
+    if (
+        seconds === null ||
+        seconds === undefined ||
+        !isFinite(seconds) ||
+        seconds <= 0
+    ) {
+        return null;
+    }
     try {
         const s = Math.round(seconds);
         const h = Math.floor(s / 3600);
@@ -331,8 +338,10 @@ function callNativeHost(url, durationHint) {
             port = chrome.runtime.connectNative(HOST_NAME);
         } catch (e) {
             reject(
-                "Failed to connect to native host: " +
-                    (e && e.message ? e.message : String(e))
+                new Error(
+                    "Failed to connect to native host: " +
+                        (e && e.message ? e.message : String(e))
+                )
             );
             return;
         }
@@ -346,7 +355,11 @@ function callNativeHost(url, durationHint) {
                 } catch (e) {
                     Logger.warn("Failed to disconnect port on timeout", e);
                 }
-                reject("Native host timeout: no response within 30 seconds");
+                reject(
+                    new Error(
+                        "Native host timeout: no response within 30 seconds"
+                    )
+                );
             }
         }, NATIVE_HOST_TIMEOUT_MS);
 
@@ -358,7 +371,10 @@ function callNativeHost(url, durationHint) {
                     resolve(msg);
                 } else {
                     reject(
-                        (msg && msg.error) || "Unknown error from native host."
+                        new Error(
+                            (msg && msg.error) ||
+                                "Unknown error from native host."
+                        )
                     );
                 }
             } finally {
@@ -378,7 +394,11 @@ function callNativeHost(url, durationHint) {
                 const err = chrome.runtime.lastError
                     ? chrome.runtime.lastError.message
                     : "Native host disconnected.";
-                reject("Failed to connect to native host. " + (err || ""));
+                reject(
+                    new Error(
+                        "Failed to connect to native host. " + (err || "")
+                    )
+                );
             }
         });
 
@@ -395,8 +415,10 @@ function callNativeHost(url, durationHint) {
         } catch (e) {
             cleanup();
             reject(
-                "Failed to send request to native host: " +
-                    (e && e.message ? e.message : String(e))
+                new Error(
+                    "Failed to send request to native host: " +
+                        (e && e.message ? e.message : String(e))
+                )
             );
         }
     });
