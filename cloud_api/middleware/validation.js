@@ -48,9 +48,14 @@ function createSizeValidator() {
                 message: e.message,
             }));
 
+            const primaryError = errors[0];
+            const errorMessage = primaryError?.field
+                ? `${primaryError.field}: ${primaryError.message}`
+                : primaryError?.message || "Validation failed";
+
             return res.status(400).json({
                 ok: false,
-                error: "Validation failed",
+                error: errorMessage,
                 details: errors,
                 requestId: req.requestId,
             });
@@ -78,9 +83,14 @@ function createValidator(schema) {
                 message: e.message,
             }));
 
+            const primaryError = errors[0];
+            const errorMessage = primaryError?.field
+                ? `${primaryError.field}: ${primaryError.message}`
+                : primaryError?.message || "Validation failed";
+
             return res.status(400).json({
                 ok: false,
-                error: "Validation failed",
+                error: errorMessage,
                 details: errors,
                 requestId: req.requestId,
             });

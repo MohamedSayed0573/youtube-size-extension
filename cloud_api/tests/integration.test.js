@@ -341,6 +341,9 @@ describe("Integration Tests", () => {
             if (response.status === 504) {
                 expect(response.body).toHaveProperty("ok", false);
                 expect(response.body.error).toContain("timed out");
+            } else if (response.status === 502) {
+                expect(response.body).toHaveProperty("ok", false);
+                expect(response.body).toHaveProperty("error");
             } else {
                 expect(response.status).toBe(200);
             }

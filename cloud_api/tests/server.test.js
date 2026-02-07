@@ -140,8 +140,7 @@ describe("Cloud API Server", () => {
 
                 expect(response.status).toBe(400);
                 expect(response.body).toHaveProperty("ok", false);
-                // Zod validation returns generic error and details array
-                expect(response.body.error).toBe("Validation failed");
+                expect(response.body.error).toContain("url");
                 expect(response.body.details).toEqual(
                     expect.arrayContaining([
                         expect.objectContaining({
@@ -159,7 +158,7 @@ describe("Cloud API Server", () => {
 
                 expect(response.status).toBe(400);
                 expect(response.body).toHaveProperty("ok", false);
-                expect(response.body.error).toBe("Validation failed");
+                expect(response.body.error).toContain("YouTube");
                 expect(response.body.details).toEqual(
                     expect.arrayContaining([
                         expect.objectContaining({
@@ -196,7 +195,7 @@ describe("Cloud API Server", () => {
 
                 expect(response.status).toBe(400);
                 expect(response.body).toHaveProperty("ok", false);
-                expect(response.body.error).toBe("Validation failed");
+                expect(response.body.error).toContain("duration_hint");
                 expect(response.body.details).toEqual(
                     expect.arrayContaining([
                         expect.objectContaining({

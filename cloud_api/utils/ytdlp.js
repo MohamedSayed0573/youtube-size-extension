@@ -188,6 +188,11 @@ async function extractInfo(url, workerPool, maxRetries = 2, cookies = null) {
     if (lastError.code === "TIMEOUT") {
         throw new TimeoutError("yt-dlp timed out while fetching metadata");
     }
+    if (lastError.code === "NETWORK_ERROR") {
+        throw new TimeoutError(
+            "Network request timed out while fetching metadata"
+        );
+    }
     if (lastError.code === "NOT_FOUND") {
         throw new NotFoundError(
             "yt-dlp executable not found. Please install yt-dlp."

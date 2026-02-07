@@ -166,7 +166,10 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Body parser
-app.use(express.json({ limit: LIMITS.REQUEST_BODY }));
+// Use a smaller limit in test to keep integration tests deterministic and fast
+const requestBodyLimit =
+    CONFIG.NODE_ENV === "test" ? "16kb" : LIMITS.REQUEST_BODY;
+app.use(express.json({ limit: requestBodyLimit }));
 
 // Rate limiting
 const apiLimiter = createRateLimiter(redisClient);
