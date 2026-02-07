@@ -6,17 +6,17 @@
 const express = require("express");
 const os = require("os");
 const { formatUptime } = require("../utils/ytdlp");
+const { CONFIG } = require("../config/env");
+const { logger } = require("../config/logger");
 
 /**
  * Create health check routes
- * @param {Object} config - Server configuration object
  * @param {Object} workerPool - Worker pool instance
  * @param {Object} redisState - Redis state object with client and getRedisReady
  * @param {string} ytdlpPath - Path to yt-dlp executable
- * @param {import('pino').Logger} logger - Pino logger instance
  * @returns {import('express').Router} Express router instance
  */
-function createHealthRoutes(config, workerPool, redisState, ytdlpPath, logger) {
+function createHealthRoutes(workerPool, redisState, ytdlpPath) {
     const router = express.Router();
     const { redisClient, getRedisReady } = redisState;
 
@@ -27,7 +27,7 @@ function createHealthRoutes(config, workerPool, redisState, ytdlpPath, logger) {
         res.json({
             ok: true,
             service: "ytdlp-sizer-api",
-            version: config.API_VERSION,
+            version: CONFIG.API_VERSION,
             status: "running",
             documentation: "/api/v1/docs",
         });
@@ -37,7 +37,7 @@ function createHealthRoutes(config, workerPool, redisState, ytdlpPath, logger) {
      * Redis health check endpoint
      */
     router.get("/redis", async (req, res) => {
-        if (!config.REDIS_ENABLED) {
+        if (!CONFIG.REDIS_ENABLED) {
             return res.status(200).json({
                 ok: true,
                 redis: "disabled",
@@ -78,7 +78,7 @@ function createHealthRoutes(config, workerPool, redisState, ytdlpPath, logger) {
      * Detailed Redis health check endpoint with comprehensive diagnostics
      */
     router.get("/redis/detailed", async (req, res) => {
-        if (!config.REDIS_ENABLED) {
+        if (!CONFIG.REDIS_ENABLED) {
             return res.status(200).json({
                 ok: true,
                 redis: "disabled",
@@ -201,7 +201,7 @@ function createHealthRoutes(config, workerPool, redisState, ytdlpPath, logger) {
                 ok: true,
                 status: overallStatus,
                 timestamp: new Date().toISOString(),
-                version: config.API_VERSION,
+                version: CONFIG.API_VERSION,
                 uptime: {
                     seconds: uptime,
                     formatted: formatUptime(uptime),
@@ -239,24 +239,24 @@ function createHealthRoutes(config, workerPool, redisState, ytdlpPath, logger) {
                         version: ytdlpVersion,
                     },
                     redis: {
-                        enabled: config.REDIS_ENABLED,
+                        enabled: CONFIG.REDIS_ENABLED,
                         connected: getRedisReady(),
-                        url: config.REDIS_URL
-                            ? config.REDIS_URL.replace(/:[^:@]*@/, ":***@")
+                        url: CONFIG.REDIS_URL
+                            ? CONFIG.REDIS_URL.replace(/:[^:@]*@/, ":***@")
                             : "not configured",
                     },
                 },
                 workerPool: poolStats,
                 config: {
-                    environment: config.NODE_ENV,
-                    authEnabled: config.REQUIRE_AUTH,
+                    environment: CONFIG.NODE_ENV,
+                    authEnabled: CONFIG.REQUIRE_AUTH,
                     corsOrigins:
-                        config.ALLOWED_ORIGINS === "*"
+                        CONFIG.ALLOWED_ORIGINS === "*"
                             ? "all"
-                            : config.ALLOWED_ORIGINS.length,
+                            : CONFIG.ALLOWED_ORIGINS.length,
                     rateLimit: {
-                        windowMs: config.RATE_LIMIT_WINDOW_MS,
-                        maxRequests: config.RATE_LIMIT_MAX_REQUESTS,
+                        windowMs: CONFIG.RATE_LIMIT_WINDOW_MS,
+                        maxRequests: CONFIG.RATE_LIMIT_MAX_REQUESTS,
                     },
                 },
             });

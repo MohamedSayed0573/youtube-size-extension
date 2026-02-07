@@ -5,6 +5,8 @@
 
 const Sentry = require("@sentry/node");
 const { VIDEO_FORMAT_IDS, AUDIO_FALLBACK_ID } = require("../config/constants");
+const { CONFIG } = require("../config/env");
+const { logger } = require("../config/logger");
 
 /**
  * Validates that a URL is a legitimate YouTube URL
@@ -167,29 +169,20 @@ function sizeFromFormat(fmt, durationSec) {
  * @async
  * @param {string} url - The YouTube video URL (must be validated first)
  * @param {Object} workerPool - Worker pool instance
- * @param {Object} config - Configuration object
- * @param {Object} logger - Logger instance
  * @param {number} [maxRetries] - Maximum number of retry attempts
  * @param {string|null} [cookies] - Optional cookies in Netscape format for authentication
  * @returns {Promise<Object>} Parsed JSON metadata from yt-dlp
  * @throws {Error} If yt-dlp fails after all retries
  */
-async function extractInfo(
-    url,
-    workerPool,
-    config,
-    logger,
-    maxRetries = 2,
-    cookies = null
-) {
+async function extractInfo(url, workerPool, maxRetries = 2, cookies = null) {
     let lastError;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             const data = await workerPool.execute({
                 url,
-                timeout: config.YTDLP_TIMEOUT,
-                maxBuffer: config.YTDLP_MAX_BUFFER,
+                timeout: CONFIG.YTDLP_TIMEOUT,
+                maxBuffer: CONFIG.YTDLP_MAX_BUFFER,
                 retryAttempt: attempt,
                 cookies, // Pass cookies for YouTube authentication
             });

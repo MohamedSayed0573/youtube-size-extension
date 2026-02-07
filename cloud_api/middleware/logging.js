@@ -5,14 +5,14 @@
 
 const Sentry = require("@sentry/node");
 const { LIMITS } = require("../config/constants");
+const { logger } = require("../config/logger");
 
 /**
  * Request ID middleware for distributed tracing
  * Generates or extracts correlation ID for tracking requests across services
- * @param {import('pino').Logger} logger - Pino logger instance
  * @returns {import('express').RequestHandler} Express middleware function
  */
-function requestIdMiddleware(logger) {
+function requestIdMiddleware() {
     return (req, res, next) => {
         // Check for existing request ID from proxy/load balancer
         const requestId =

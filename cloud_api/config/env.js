@@ -86,22 +86,19 @@ const envSchema = z
     }));
 
 /**
- * Parse and validate environment variables
- * @returns {Object} Validated configuration object
- * @throws {Error} If validation fails
+ * Parse and validate environment configuration once at module load
  */
-function loadConfig() {
-    try {
-        return envSchema.parse(process.env);
-    } catch (error) {
-        console.error("❌ Environment configuration validation failed:");
-        if (error.errors) {
-            error.errors.forEach((err) => {
-                console.error(`  - ${err.path.join(".")}: ${err.message}`);
-            });
-        }
-        throw new Error("Invalid environment configuration");
+let CONFIG;
+try {
+    CONFIG = envSchema.parse(process.env);
+} catch (error) {
+    console.error("❌ Environment configuration validation failed:");
+    if (error.errors) {
+        error.errors.forEach((err) => {
+            console.error(`  - ${err.path.join(".")}: ${err.message}`);
+        });
     }
+    throw new Error("Invalid environment configuration");
 }
 
-module.exports = { loadConfig };
+module.exports = { CONFIG };

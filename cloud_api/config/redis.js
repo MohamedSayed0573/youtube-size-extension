@@ -5,14 +5,15 @@
 
 const redis = require("redis");
 
+const { CONFIG } = require("./env");
+const { logger } = require("./logger");
+
 /**
  * Initialize Redis client with event handlers
- * @param {Object} config - Configuration object
- * @param {Object} logger - Pino logger instance
  * @returns {Object} Redis state with client and connection methods
  */
-function initializeRedis(config, logger) {
-    if (!config.REDIS_ENABLED) {
+function initializeRedis() {
+    if (!CONFIG.REDIS_ENABLED) {
         logger.info(
             "Redis not enabled - using in-memory rate limiting (not recommended for production with multiple instances)"
         );
@@ -24,8 +25,8 @@ function initializeRedis(config, logger) {
     }
 
     const redisOptions = {
-        url: config.REDIS_URL,
-        password: config.REDIS_PASSWORD,
+        url: CONFIG.REDIS_URL,
+        password: CONFIG.REDIS_PASSWORD,
         socket: {
             reconnectStrategy: (retries) => {
                 if (retries > 10) {
@@ -75,7 +76,7 @@ function initializeRedis(config, logger) {
         .connect()
         .then(() => {
             logger.info(
-                { url: config.REDIS_URL },
+                { url: CONFIG.REDIS_URL },
                 "Redis connection established"
             );
             return true;

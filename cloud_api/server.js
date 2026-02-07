@@ -12,10 +12,10 @@ const express = require("express");
 const cors = require("cors");
 const compression = require("compression");
 const helmet = require("helmet");
-const pino = require("pino");
 
 // Config modules
-const { loadConfig } = require("./config/env");
+const { CONFIG } = require("./config/env");
+const { logger } = require("./config/logger");
 const { TIMEOUTS, LIMITS } = require("./config/constants");
 const { initializeRedis } = require("./config/redis");
 
@@ -36,28 +36,6 @@ const { createApiRoutes } = require("./routes/api");
 const WorkerPool = require("./worker-pool");
 
 // ============================================
-// Configuration & Logger
-// ============================================
-
-const CONFIG = loadConfig();
-const ytdlpPath = CONFIG.YTDLP_PATH;
-
-const logger = pino({
-    level: CONFIG.LOG_LEVEL || (CONFIG.NODE_ENV === "test" ? "silent" : "info"),
-    transport:
-        CONFIG.NODE_ENV !== "production" && CONFIG.NODE_ENV !== "test"
-            ? {
-                  target: "pino-pretty",
-                  options: {
-                      colorize: true,
-                      translateTime: "SYS:standard",
-                      ignore: "pid,hostname",
-                  },
-              }
-            : undefined,
-});
-
-// ============================================
 // Express App Setup
 // ============================================
 
@@ -70,7 +48,7 @@ app.set("trust proxy", 1);
 // Redis Setup
 // ============================================
 
-const redisState = initializeRedis(CONFIG, logger);
+const redisState = initializeRedis();
 const { redisClient } = redisState;
 // Use getter to always get current state
 const getRedisReady = () => redisState.redisReady;
@@ -165,7 +143,7 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 // ============================================
 
 // Request ID and logging
-app.use(requestIdMiddleware(logger));
+app.use(requestIdMiddleware());
 app.use(requestLoggingMiddleware(activeConnections, () => isShuttingDown));
 
 // Security headers (helmet)
@@ -202,10 +180,10 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: LIMITS.REQUEST_BODY }));
 
 // Rate limiting
-const apiLimiter = createRateLimiter(CONFIG, redisClient, logger);
+const apiLimiter = createRateLimiter(redisClient);
 
 // Authentication
-const authMiddleware = createAuthMiddleware(CONFIG);
+const authMiddleware = createAuthMiddleware();
 
 // ============================================
 // Routes
@@ -213,23 +191,15 @@ const authMiddleware = createAuthMiddleware(CONFIG);
 
 // Health routes (/, /health, /health/redis)
 const healthRouter = createHealthRoutes(
-    CONFIG,
     workerPool,
     { redisClient, getRedisReady },
-    ytdlpPath,
-    logger
+    CONFIG.YTDLP_PATH
 );
 app.use("/", healthRouter);
 app.use("/health", healthRouter);
 
 // API v1 routes
-const apiRouter = createApiRoutes(
-    CONFIG,
-    workerPool,
-    logger,
-    authMiddleware,
-    apiLimiter
-);
+const apiRouter = createApiRoutes(workerPool, authMiddleware, apiLimiter);
 app.use("/api/v1", apiRouter);
 
 // ============================================

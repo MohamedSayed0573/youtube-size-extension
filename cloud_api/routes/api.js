@@ -10,23 +10,17 @@ const {
     extractInfo,
     computeSizes,
 } = require("../utils/ytdlp");
+const { CONFIG } = require("../config/env");
+const { logger } = require("../config/logger");
 
 /**
  * Create API routes for video size extraction
- * @param {Object} config - Server configuration object
  * @param {Object} workerPool - Worker pool instance
- * @param {import('pino').Logger} logger - Pino logger instance
  * @param {import('express').RequestHandler} authMiddleware - Authentication middleware
  * @param {import('express').RequestHandler} rateLimiter - Rate limiting middleware
  * @returns {import('express').Router} Express router instance
  */
-function createApiRoutes(
-    config,
-    workerPool,
-    logger,
-    authMiddleware,
-    rateLimiter
-) {
+function createApiRoutes(workerPool, authMiddleware, rateLimiter) {
     const router = express.Router();
 
     /**
@@ -34,7 +28,7 @@ function createApiRoutes(
      */
     router.get("/docs", (req, res) => {
         res.json({
-            version: config.API_VERSION,
+            version: CONFIG.API_VERSION,
             service: "ytdlp-sizer-api",
             description: "API for extracting YouTube video size information",
             endpoints: {
@@ -49,10 +43,10 @@ function createApiRoutes(
                     "POST /api/v1/size": "Extract video size information",
                 },
             },
-            authentication: config.REQUIRE_AUTH
+            authentication: CONFIG.REQUIRE_AUTH
                 ? "Required: X-API-Key header"
                 : "Optional",
-            rateLimit: `${config.RATE_LIMIT_MAX_REQUESTS} requests per ${config.RATE_LIMIT_WINDOW_MS / 1000} seconds`,
+            rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS} requests per ${CONFIG.RATE_LIMIT_WINDOW_MS / 1000} seconds`,
             features: {
                 workerPool: "Non-blocking yt-dlp execution with worker threads",
                 requestTracing: "X-Request-ID header for distributed tracing",
@@ -159,7 +153,7 @@ function createApiRoutes(
             const meta = await extractInfo(
                 url,
                 workerPool,
-                config,
+                CONFIG,
                 logger,
                 2, // maxRetries
                 cookies // cookies from browser extension

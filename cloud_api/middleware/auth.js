@@ -53,20 +53,21 @@ function validateApiKey(apiKey) {
     return { valid: true };
 }
 
+const { CONFIG } = require("../config/env");
+
 /**
  * Middleware to verify API key authentication
  *
  * Checks X-API-Key header against configured API_KEY environment variable.
  * Skips authentication if REQUIRE_AUTH is false (development mode).
  * Uses constant-time comparison to prevent timing attacks.
- * @param {Object} config - Configuration object
  * @returns {Function} Express middleware function
  * @throws {Error} If REQUIRE_AUTH is true but API_KEY is invalid
  */
-function createAuthMiddleware(config) {
+function createAuthMiddleware() {
     // Validate API key configuration at middleware creation time
-    if (config.REQUIRE_AUTH) {
-        const validation = validateApiKey(config.API_KEY);
+    if (CONFIG.REQUIRE_AUTH) {
+        const validation = validateApiKey(CONFIG.API_KEY);
         if (!validation.valid) {
             throw new Error(
                 `Authentication is required but API key is invalid: ${validation.error}. ` +
@@ -78,13 +79,13 @@ function createAuthMiddleware(config) {
 
     return function authenticateApiKey(req, res, next) {
         // Skip auth if not required (development)
-        if (!config.REQUIRE_AUTH) {
+        if (!CONFIG.REQUIRE_AUTH) {
             return next();
         }
 
         const apiKey = req.headers["x-api-key"];
 
-        if (!apiKey || !safeCompare(apiKey, config.API_KEY)) {
+        if (!apiKey || !safeCompare(apiKey, CONFIG.API_KEY)) {
             return res.status(401).json({
                 ok: false,
                 error: "Unauthorized. Valid API key required.",

@@ -26,6 +26,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { isValidYouTubeUrl } = require("./utils/ytdlp");
+const { workerLogger } = require("./config/logger");
 
 const execFileAsync = promisify(execFile);
 const writeFileAsync = promisify(fs.writeFile);
@@ -84,8 +85,9 @@ async function executeYtdlp(
         args.push("--", url);
 
         // Debug: log the full command for troubleshooting
-        console.log(
-            `[Worker] Executing: yt-dlp ${args.join(" ")} (cookies: ${cookiesPath ? "yes" : "no"})`
+        workerLogger.info(
+            { args, hasCookies: !!cookiesPath, retryAttempt },
+            "Executing yt-dlp command"
         );
 
         const { stdout, stderr } = await execFileAsync("yt-dlp", args, {
@@ -96,10 +98,7 @@ async function executeYtdlp(
 
         // Log warnings but continue
         if (stderr) {
-            console.warn(
-                `[Worker] yt-dlp stderr (attempt ${retryAttempt}):`,
-                stderr
-            );
+            workerLogger.warn({ stderr, retryAttempt }, "yt-dlp stderr output");
         }
 
         const data = JSON.parse(stdout);
@@ -168,8 +167,9 @@ async function executeYtdlp(
                 await unlinkAsync(cookiesPath);
             } catch (cleanupError) {
                 // Ignore cleanup errors - file may already be deleted or not exist
-                console.warn(
-                    `[Worker] Failed to cleanup cookies file: ${cleanupError.message}`
+                workerLogger.warn(
+                    { error: cleanupError.message, cookiesPath },
+                    "Failed to cleanup cookies file"
                 );
             }
         }
