@@ -140,7 +140,16 @@ describe("Cloud API Server", () => {
 
                 expect(response.status).toBe(400);
                 expect(response.body).toHaveProperty("ok", false);
-                expect(response.body.error).toMatch(/url.*required/i);
+                // Zod validation returns generic error and details array
+                expect(response.body.error).toBe("Validation failed");
+                expect(response.body.details).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            field: "url",
+                            message: expect.stringMatching(/url.*required/i),
+                        }),
+                    ])
+                );
             });
 
             test("should reject invalid YouTube URL", async () => {
@@ -150,7 +159,15 @@ describe("Cloud API Server", () => {
 
                 expect(response.status).toBe(400);
                 expect(response.body).toHaveProperty("ok", false);
-                expect(response.body.error).toMatch(/invalid.*youtube/i);
+                expect(response.body.error).toBe("Validation failed");
+                expect(response.body.details).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            field: "url",
+                            message: expect.stringMatching(/invalid.*youtube/i),
+                        }),
+                    ])
+                );
             });
 
             test("should reject URL with command injection attempt", async () => {
@@ -179,7 +196,15 @@ describe("Cloud API Server", () => {
 
                 expect(response.status).toBe(400);
                 expect(response.body).toHaveProperty("ok", false);
-                expect(response.body.error).toMatch(/duration_hint/i);
+                expect(response.body.error).toBe("Validation failed");
+                expect(response.body.details).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            field: "duration_hint",
+                            message: expect.stringMatching(/duration_hint/i),
+                        }),
+                    ])
+                );
             });
 
             test("should reject duration_hint outside valid range", async () => {

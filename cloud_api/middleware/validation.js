@@ -4,17 +4,24 @@
  */
 
 const { z } = require("zod");
+const { isValidYouTubeUrl } = require("../utils/ytdlp");
 
 /**
  * Zod schema for size endpoint request body
  */
 const sizeRequestSchema = z.object({
-    url: z.string({
-        required_error: "URL is required",
-        invalid_type_error: "URL must be a string",
-    }),
+    url: z
+        .string({
+            required_error: "URL is required",
+            invalid_type_error: "URL must be a string",
+        })
+        .refine((url) => isValidYouTubeUrl(url), {
+            message: "Invalid or unsafe YouTube URL",
+        }),
     duration_hint: z
-        .number()
+        .number({
+            invalid_type_error: "duration_hint must be a number",
+        })
         .min(0, "duration_hint must be at least 0")
         .max(86400, "duration_hint cannot exceed 86400 seconds (24 hours)")
         .optional(),

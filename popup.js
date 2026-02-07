@@ -169,8 +169,6 @@
         }
     }
 
-    // humanizeDuration is now imported from utils.js to eliminate duplication
-
     // Cache config (synced with options)
     let TTL_MS = 24 * 60 * 60 * 1000; // default 24 hours
     const defaultSettings = {

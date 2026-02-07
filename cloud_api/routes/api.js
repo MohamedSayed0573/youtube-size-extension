@@ -5,13 +5,10 @@
 
 const express = require("express");
 const Sentry = require("@sentry/node");
-const {
-    isValidYouTubeUrl,
-    extractInfo,
-    computeSizes,
-} = require("../utils/ytdlp");
+const { extractInfo, computeSizes } = require("../utils/ytdlp");
 const { CONFIG } = require("../config/env");
 const { logger } = require("../config/logger");
+const { createSizeValidator } = require("../middleware/validation");
 
 /**
  * Create API routes for video size extraction
@@ -95,113 +92,83 @@ function createApiRoutes(workerPool, authMiddleware, rateLimiter) {
     /**
      * Main size extraction endpoint
      */
-    router.post("/size", rateLimiter, authMiddleware, async (req, res) => {
-        const startTime = Date.now();
-        try {
-            const { url, duration_hint, cookies } = req.body;
+    router.post(
+        "/size",
+        rateLimiter,
+        authMiddleware,
+        createSizeValidator(),
+        async (req, res) => {
+            const startTime = Date.now();
+            try {
+                const { url, duration_hint, cookies } = req.body;
 
-            Sentry.addBreadcrumb({
-                category: "api",
-                message: "Video size request received",
-                data: { url, duration_hint, requestId: req.requestId },
-                level: "info",
-            });
-
-            req.log.info(
-                { url, hasCookies: !!cookies },
-                "Processing size request"
-            );
-
-            // Validate URL is provided
-            if (!url) {
-                req.log.warn("Request missing URL parameter");
-                return res.status(400).json({
-                    ok: false,
-                    error: "URL is required",
-                    requestId: req.requestId,
+                Sentry.addBreadcrumb({
+                    category: "api",
+                    message: "Video size request received",
+                    data: { url, duration_hint, requestId: req.requestId },
+                    level: "info",
                 });
-            }
 
-            // Validate URL is safe and is a YouTube URL
-            if (!isValidYouTubeUrl(url)) {
-                req.log.warn({ url }, "Invalid or unsafe YouTube URL");
-                return res.status(400).json({
-                    ok: false,
-                    error: "Invalid or unsafe YouTube URL",
-                    requestId: req.requestId,
-                });
-            }
+                req.log.info(
+                    { url, hasCookies: !!cookies },
+                    "Processing size request"
+                );
 
-            // Validate duration_hint if provided
-            if (
-                duration_hint !== undefined &&
-                (typeof duration_hint !== "number" ||
-                    !isFinite(duration_hint) ||
-                    duration_hint < 0 ||
-                    duration_hint > 86400)
-            ) {
-                req.log.warn({ duration_hint }, "Invalid duration_hint");
-                return res.status(400).json({
-                    ok: false,
-                    error: "Invalid duration_hint (must be 0-86400 seconds)",
-                    requestId: req.requestId,
-                });
-            }
+                // Extract metadata using yt-dlp (with retries)
+                // Pass cookies if provided to bypass YouTube bot detection
+                const meta = await extractInfo(
+                    url,
+                    workerPool,
+                    CONFIG,
+                    logger,
+                    2, // maxRetries
+                    cookies // cookies from browser extension
+                );
 
-            // Extract metadata using yt-dlp (with retries)
-            // Pass cookies if provided to bypass YouTube bot detection
-            const meta = await extractInfo(
-                url,
-                workerPool,
-                CONFIG,
-                logger,
-                2, // maxRetries
-                cookies // cookies from browser extension
-            );
+                // Compute sizes
+                const result = computeSizes(meta, duration_hint);
 
-            // Compute sizes
-            const result = computeSizes(meta, duration_hint);
+                const duration = Date.now() - startTime;
+                req.log.info(
+                    { duration, videoId: meta.id },
+                    "Request completed successfully"
+                );
 
-            const duration = Date.now() - startTime;
-            req.log.info(
-                { duration, videoId: meta.id },
-                "Request completed successfully"
-            );
-
-            // Set cache headers for client-side caching
-            res.setHeader("Cache-Control", "private, max-age=3600"); // 1 hour cache
-            res.json(result);
-        } catch (error) {
-            const duration = Date.now() - startTime;
-            Sentry.captureException(error, {
-                contexts: {
-                    request: {
-                        requestId: req.requestId,
-                        url: req.body.url,
-                        duration,
+                // Set cache headers for client-side caching
+                res.setHeader("Cache-Control", "private, max-age=3600"); // 1 hour cache
+                res.json(result);
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                Sentry.captureException(error, {
+                    contexts: {
+                        request: {
+                            requestId: req.requestId,
+                            url: req.body.url,
+                            duration,
+                        },
                     },
-                },
-            });
-            req.log.error(
-                { error: error.message, url: req.body.url, duration },
-                "Error processing request"
-            );
+                });
+                req.log.error(
+                    { error: error.message, url: req.body.url, duration },
+                    "Error processing request"
+                );
 
-            // Determine appropriate status code
-            let statusCode = 502;
-            if (error.message.includes("timed out")) {
-                statusCode = 504;
-            } else if (error.message.includes("not found")) {
-                statusCode = 503;
+                // Determine appropriate status code
+                let statusCode = 502;
+                if (error.message.includes("timed out")) {
+                    statusCode = 504;
+                } else if (error.message.includes("not found")) {
+                    statusCode = 503;
+                }
+
+                res.status(statusCode).json({
+                    ok: false,
+                    error: error.message,
+                    requestId: req.requestId,
+                });
             }
-
-            res.status(statusCode).json({
-                ok: false,
-                error: error.message,
-                requestId: req.requestId,
-            });
         }
-    });
+    );
 
     return router;
 }
