@@ -96,7 +96,6 @@ function createHealthRoutes(workerPool, redisState, ytdlpPath) {
         }
 
         try {
-            // Logic extracted to config/redis.js to avoid "Fat Controller"
             const result = await redisState.getDetailedHealth();
             res.json(result);
         } catch (error) {
