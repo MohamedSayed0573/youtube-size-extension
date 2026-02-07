@@ -68,3 +68,6 @@ awscliv2.zip
 
 # Large files
 *.md
+
+.gemini/
+gha-creds-*.json
