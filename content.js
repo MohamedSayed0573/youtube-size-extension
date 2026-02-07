@@ -30,7 +30,113 @@
     let lastVideoId = null;
     let lastItag = null;
 
+    /**
+     * Latest data received from the injected main-world script via postMessage.
+     * When available, this provides authoritative playback quality from YouTube's
+     * internal player API rather than DOM-inferred values.
+     * @type {Object|null}
+     */
+    let playerApiData = null;
+
+    /** @constant {string} Message source for outgoing requests to injected script */
+    const CONTENT_MSG_SOURCE = "ytdlp-sizer-content";
+    /** @constant {string} Message source expected from injected script */
+    const INJECTED_MSG_SOURCE = "ytdlp-sizer-injected";
+
     // Shared utility functions (isYouTubeUrl, extractVideoId) are available from utils.js
+
+    /**
+     * Listens for postMessage events from the injected main-world script
+     *
+     * The injected script (injected.js) runs in the page's main world and has
+     * access to YouTube's player API. It posts player data (quality, duration, etc.)
+     * back to this content script via window.postMessage.
+     */
+    window.addEventListener("message", (event) => {
+        if (event.source !== window) return;
+        if (
+            !event.data ||
+            event.data.source !== INJECTED_MSG_SOURCE ||
+            event.data.type !== "player_data"
+        ) {
+            return;
+        }
+        const payload = event.data.payload;
+        if (!payload) return;
+
+        // Validate that the data is for the current video
+        const currentVideoId = extractVideoId(location.href);
+        if (
+            payload.videoId &&
+            currentVideoId &&
+            payload.videoId !== currentVideoId
+        ) {
+            // Stale data from a previous video — ignore
+            return;
+        }
+
+        playerApiData = payload;
+        // Trigger an update with the fresh player API data
+        readAndNotify(true);
+    });
+
+    /**
+     * Requests fresh player data from the injected main-world script
+     * @returns {void}
+     */
+    function requestPlayerData() {
+        window.postMessage(
+            { source: CONTENT_MSG_SOURCE, type: "request_player_data" },
+            "*"
+        );
+    }
+
+    /**
+     * Resolves current video info by preferring player API data over DOM inspection
+     *
+     * The player API (via injected.js) provides the authoritative playback quality
+     * that YouTube's internal player is actually delivering. DOM inspection
+     * (videoHeight, currentSrc) serves as a fallback when the player API isn't
+     * available yet.
+     * @returns {Object} Resolved video info with height, label, itag, videoId, dur
+     */
+    function getResolvedVideoInfo() {
+        const vid = getVideoEl();
+        const videoId = extractVideoId(location.href);
+
+        let vh, label;
+
+        // Check if player API data is available and current
+        const apiValid =
+            playerApiData &&
+            playerApiData.label &&
+            (!playerApiData.videoId ||
+                !videoId ||
+                playerApiData.videoId === videoId);
+
+        if (apiValid) {
+            // Prefer authoritative data from YouTube's player API
+            label = playerApiData.label;
+            vh = playerApiData.height || (vid ? vid.videoHeight || 0 : 0);
+        } else {
+            // Fallback to DOM inspection
+            vh = vid ? vid.videoHeight || 0 : 0;
+            label = mapHeightToLabel(vh);
+        }
+
+        // itag: prefer video element src parsing, fallback is not available from player API
+        const itag = extractCurrentItag();
+
+        // Duration: prefer player API (more reliable), fallback to video element
+        const dur =
+            apiValid && playerApiData.durationSec > 0
+                ? playerApiData.durationSec
+                : vid
+                  ? Math.round(Number.isFinite(vid.duration) ? vid.duration : 0)
+                  : 0;
+
+        return { vh, label, itag, videoId, dur };
+    }
 
     /**
      * Extracts the current video format itag from the video element's source URL
@@ -116,14 +222,7 @@
      */
     function readAndNotify(force = false) {
         if (!isYouTubeUrl(location.href)) return;
-        const vid = getVideoEl();
-        const vh = vid ? vid.videoHeight || 0 : 0;
-        const label = mapHeightToLabel(vh);
-        const itag = extractCurrentItag();
-        const videoId = extractVideoId(location.href);
-        const dur = vid
-            ? Math.round(Number.isFinite(vid.duration) ? vid.duration : 0)
-            : 0;
+        const { vh, label, itag, videoId, dur } = getResolvedVideoInfo();
         // Debounce identical values
         if (
             !force &&
@@ -178,6 +277,7 @@
         urlPollId = setInterval(() => {
             if (location.href !== lastHref) {
                 lastHref = location.href;
+                playerApiData = null; // Clear stale data on navigation
                 setTimeout(() => {
                     readAndNotify(true);
                     setup(); // Rebind to new video element if YouTube replaced it
@@ -210,6 +310,7 @@
             const h = href || location.href;
             if (h !== lastHref) {
                 lastHref = h;
+                playerApiData = null; // Clear stale data on navigation
                 setTimeout(() => {
                     readAndNotify(true);
                     setup(); // Rebind to new video element if YouTube replaced it
@@ -260,6 +361,8 @@
      *
      */
     function setup() {
+        // Request fresh data from the injected main-world script
+        requestPlayerData();
         readAndNotify(true);
         const v = getVideoEl();
         if (!v || v === boundVideoEl) return;
@@ -277,14 +380,8 @@
         chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             if (!msg) return false;
             if (msg.type === "get_current_res") {
-                const v = getVideoEl();
-                const vh = v ? v.videoHeight || 0 : 0;
-                const label = mapHeightToLabel(vh);
-                const itag = extractCurrentItag();
-                const videoId = extractVideoId(location.href);
-                const dur = v
-                    ? Math.round(Number.isFinite(v.duration) ? v.duration : 0)
-                    : 0;
+                const { vh, label, itag, videoId, dur } =
+                    getResolvedVideoInfo();
                 try {
                     sendResponse({
                         ok: true,
