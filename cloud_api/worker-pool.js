@@ -166,9 +166,6 @@ class WorkerPool {
      */
     getStats() {
         return {
-            totalTasks: 0, // Deprecated/Not tracked by Piscina easily without wrapper, returning 0
-            completedTasks: 0, // Deprecated
-            failedTasks: 0, // Deprecated
             queueLength: this.piscina.queueSize,
             activeWorkers: this.piscina.threads.length,
             activeTasks: this.piscina.utilization * this.piscina.threads.length, // Approx

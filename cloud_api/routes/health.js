@@ -18,7 +18,7 @@ const { logger } = require("../config/logger");
  */
 function createHealthRoutes(workerPool, redisState, ytdlpPath) {
     const router = express.Router();
-    const { redisClient, getRedisReady } = redisState;
+    const { redisClient } = redisState;
 
     /**
      * Root endpoint
@@ -58,11 +58,12 @@ function createHealthRoutes(workerPool, redisState, ytdlpPath) {
             await redisClient.ping();
             const latency = Date.now() - start;
 
+            const status = redisState.getRedisStatus();
             res.json({
                 ok: true,
                 redis: "connected",
                 latency: `${latency}ms`,
-                ready: getRedisReady(),
+                ready: status.ready,
             });
         } catch (error) {
             logger.error({ error: error.message }, "Redis health check failed");
@@ -176,13 +177,7 @@ function createHealthRoutes(workerPool, redisState, ytdlpPath) {
                         path: ytdlpPath,
                         version: ytdlpVersion,
                     },
-                    redis: {
-                        enabled: CONFIG.REDIS_ENABLED,
-                        connected: getRedisReady(),
-                        url: CONFIG.REDIS_URL
-                            ? CONFIG.REDIS_URL.replace(/:[^:@]*@/, ":***@")
-                            : "not configured",
-                    },
+                    redis: redisState.getRedisStatus(),
                 },
                 workerPool: poolStats,
                 config: {

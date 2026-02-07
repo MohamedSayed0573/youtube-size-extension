@@ -21,6 +21,12 @@ function initializeRedis() {
             redisClient: null,
             redisReady: false,
             waitForConnection: async () => false,
+            getRedisStatus: () => ({
+                enabled: false,
+                connected: false,
+                ready: false,
+                url: "disabled",
+            }),
         };
     }
 
@@ -97,6 +103,22 @@ function initializeRedis() {
         redisClient,
         get redisReady() {
             return ready;
+        },
+        /**
+         * Get comprehensive Redis status
+         * @returns {Object} Status object with { enabled, connected, ready, url }
+         */
+        getRedisStatus() {
+            const safeUrl = CONFIG.REDIS_URL
+                ? CONFIG.REDIS_URL.replace(/:[^:@]*@/, ":***@")
+                : "not configured";
+
+            return {
+                enabled: CONFIG.REDIS_ENABLED,
+                connected: ready,
+                ready: ready,
+                url: safeUrl,
+            };
         },
         /**
          * Wait for Redis connection to be established

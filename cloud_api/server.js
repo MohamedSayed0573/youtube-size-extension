@@ -50,8 +50,6 @@ app.set("trust proxy", 1);
 
 const redisState = initializeRedis();
 const { redisClient } = redisState;
-// Use getter to always get current state
-const getRedisReady = () => redisState.redisReady;
 
 // ============================================
 // Worker Pool Setup
@@ -183,7 +181,7 @@ const authMiddleware = createAuthMiddleware();
 // Health routes (/, /health, /health/redis)
 const healthRouter = createHealthRoutes(
     workerPool,
-    { redisClient, getRedisReady },
+    redisState,
     CONFIG.YTDLP_PATH
 );
 app.use("/", healthRouter);
@@ -248,7 +246,8 @@ async function startServer() {
     }
 
     server = app.listen(CONFIG.PORT, "0.0.0.0", () => {
-        const redisReady = getRedisReady();
+        const redisStatus = redisState.getRedisStatus();
+
         logger.info(
             {
                 service: "ytdlp-sizer-api",
@@ -258,8 +257,8 @@ async function startServer() {
                 authRequired: CONFIG.REQUIRE_AUTH,
                 rateLimit: `${CONFIG.RATE_LIMIT_MAX_REQUESTS}/min`,
                 redis: {
-                    enabled: CONFIG.REDIS_ENABLED,
-                    connected: redisReady,
+                    enabled: redisStatus.enabled,
+                    connected: redisStatus.connected,
                 },
                 workerPool: {
                     min: workerPool.minWorkers,
@@ -271,8 +270,8 @@ async function startServer() {
         );
 
         // Redis status
-        if (CONFIG.REDIS_ENABLED) {
-            if (redisReady) {
+        if (redisStatus.enabled) {
+            if (redisStatus.ready) {
                 logger.info("✓ Redis distributed rate limiting active");
             } else {
                 logger.warn(
