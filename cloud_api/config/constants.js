@@ -14,7 +14,7 @@ const TIMEOUTS = {
 
 const LIMITS = {
     MAX_BUFFER: 10 * 1024 * 1024, // 10 MB max buffer for yt-dlp output
-    REQUEST_BODY: "10kb", // 10 KB max request body
+    REQUEST_BODY: "64kb", // 64 KB max request body (accommodates cookies payload)
     MIN_WORKERS: 2, // Minimum worker pool size
     MAX_WORKERS: 10, // Maximum worker pool size
     MAX_TASKS_PER_WORKER: 100, // Tasks before worker recycle

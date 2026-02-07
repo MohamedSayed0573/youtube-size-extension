@@ -20,6 +20,9 @@ build/
 *.pem
 *.zip
 
+# IMPORTANT: Do not commit local configuration with secrets
+config.json
+
 # Environment variables
 .env
 .env.local

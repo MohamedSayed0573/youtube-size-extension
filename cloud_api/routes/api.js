@@ -100,7 +100,7 @@ function createApiRoutes(workerPool, authMiddleware, rateLimiter) {
         async (req, res) => {
             const startTime = Date.now();
             try {
-                const { url, duration_hint, cookies } = req.body;
+                const { url, duration_hint, cookies } = req.validatedBody;
 
                 Sentry.addBreadcrumb({
                     category: "api",
@@ -119,8 +119,6 @@ function createApiRoutes(workerPool, authMiddleware, rateLimiter) {
                 const meta = await extractInfo(
                     url,
                     workerPool,
-                    CONFIG,
-                    logger,
                     2, // maxRetries
                     cookies // cookies from browser extension
                 );

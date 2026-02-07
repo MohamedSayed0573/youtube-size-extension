@@ -25,6 +25,12 @@ const sizeRequestSchema = z.object({
         .min(0, "duration_hint must be at least 0")
         .max(86400, "duration_hint cannot exceed 86400 seconds (24 hours)")
         .optional(),
+    cookies: z
+        .string({
+            invalid_type_error: "cookies must be a string",
+        })
+        .max(50000, "cookies cannot exceed 50KB")
+        .optional(),
 });
 
 /**

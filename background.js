@@ -139,16 +139,18 @@ async function callCloudApi(url, durationHint) {
             ? settings.cloudApiUrl.trim()
             : "";
     if (!base) throw new Error("Cloud API URL not configured");
+    // Enforce HTTPS to protect cookies and API keys in transit (allow localhost for development)
+    if (
+        !base.startsWith("https://") &&
+        !base.startsWith("http://localhost") &&
+        !base.startsWith("http://127.0.0.1")
+    ) {
+        throw new Error("Cloud API URL must use HTTPS");
+    }
     const endpoint = base + "/size";
     Logger.info(`Calling Cloud API: ${endpoint}`); // Debug log to verify URL
     const ac = new AbortController();
-    const id = setTimeout(() => {
-        try {
-            ac.abort();
-        } catch (e) {
-            Logger.warn("Abort failed", e);
-        }
-    }, 35000);
+    const id = setTimeout(() => ac.abort(), 35000);
     try {
         const body = { url };
         if (
@@ -196,11 +198,7 @@ async function callCloudApi(url, durationHint) {
         if (!json.ok) throw new Error(json.error || "Cloud API returned error");
         return json; // { ok, human, bytes, duration? }
     } finally {
-        try {
-            clearTimeout(id);
-        } catch (e) {
-            Logger.warn("ClearTimeout failed", e);
-        }
+        clearTimeout(id);
     }
 }
 /** @constant {number} Time-to-live for duration hints in milliseconds (1 hour) */
@@ -215,27 +213,18 @@ const HINT_TTL_MS = 60 * 60 * 1000;
  * @returns {number|null} Duration in seconds if found and fresh, null otherwise
  */
 function getDurationHint(videoId) {
-    try {
-        const rec = durationHints.get(videoId);
-        if (!rec) return null;
-        const ts = rec && typeof rec.ts === "number" ? rec.ts : 0;
-        if (!ts || Date.now() - ts > HINT_TTL_MS) {
-            try {
-                durationHints.delete(videoId);
-            } catch (e) {
-                Logger.warn("Failed to delete expired duration hint", e);
-            }
-            return null;
-        }
-        const v =
-            rec && typeof rec.d === "number" && isFinite(rec.d) && rec.d > 0
-                ? rec.d
-                : null;
-        return v ? Math.round(v) : null;
-    } catch (e) {
-        Logger.warn("getDurationHint failed", e);
+    const rec = durationHints.get(videoId);
+    if (!rec) return null;
+    const ts = typeof rec.ts === "number" ? rec.ts : 0;
+    if (!ts || Date.now() - ts > HINT_TTL_MS) {
+        durationHints.delete(videoId);
         return null;
     }
+    const v =
+        typeof rec.d === "number" && isFinite(rec.d) && rec.d > 0
+            ? rec.d
+            : null;
+    return v ? Math.round(v) : null;
 }
 
 /**
@@ -433,11 +422,7 @@ function startBadgeSpinner(tabId) {
  */
 function stopBadgeSpinner(tabId) {
     if (!tabBadgeTimers.has(tabId)) return;
-    try {
-        clearInterval(tabBadgeTimers.get(tabId));
-    } catch (e) {
-        Logger.warn("Failed to clear interval", e);
-    }
+    clearInterval(tabBadgeTimers.get(tabId));
     tabBadgeTimers.delete(tabId);
 }
 
@@ -761,22 +746,14 @@ async function prefetchForUrl(url, tabId, forced = false) {
 
             // Success badge: stop spinner and show persistent checkmark
             if (typeof tabId === "number") {
-                try {
-                    stopBadgeSpinner(tabId);
-                } catch (e) {
-                    Logger.warn("Failed to stop badge spinner", e);
-                }
+                stopBadgeSpinner(tabId);
                 setBadgeCheck(tabId);
             }
         }
     } catch (e) {
         // Error badge: stop spinner; if we already have a fresh cache, keep the ✓
         if (typeof tabId === "number") {
-            try {
-                stopBadgeSpinner(tabId);
-            } catch (e) {
-                Logger.warn("Failed to stop badge spinner on error", e);
-            }
+            stopBadgeSpinner(tabId);
             try {
                 const vidFresh = await isFreshInCache(videoId);
                 if (vidFresh) {
@@ -875,24 +852,18 @@ async function prefetchExistingYouTubeTabs() {
     }
 }
 
-try {
-    chrome.tabs.onRemoved.addListener((tabId) => {
-        try {
-            stopBadgeSpinner(tabId);
-        } catch (e) {
-            Logger.warn("Failed to stop badge spinner on tab remove", e);
-        }
-    });
-} catch (e) {
-    Logger.warn("Failed to add tabs.onRemoved listener", e);
-}
+chrome.tabs.onRemoved.addListener((tabId) => {
+    stopBadgeSpinner(tabId);
+});
 
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
+    await settingsReady;
     pruneAllMaps();
     prefetchExistingYouTubeTabs();
 });
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
+    await settingsReady;
     prefetchExistingYouTubeTabs();
     // Run a one-time cleanup on install
     cleanupOldCaches();
@@ -1096,5 +1067,5 @@ try {
     Logger.warn("Failed to add message listener", e);
 }
 
-// Load settings on startup
-loadSettings();
+// Load settings on startup (store promise so startup handlers can await it)
+const settingsReady = loadSettings();

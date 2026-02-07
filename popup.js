@@ -16,6 +16,7 @@
     let currentUrl = null;
     let currentTabId = null;
     let statusSpinTimer = null;
+    let fallbackTimerId = null; // Track the 15s fallback timeout for cleanup
     let selectedResolutions = ["480p", "720p", "1080p", "1440p"]; // default fallback
     let showLength = true;
     let currentResLabel = null; // e.g., "720p"
@@ -141,11 +142,7 @@
      * @returns {void}
      */
     function startStatusSpinner(base = "Refreshing") {
-        try {
-            clearInterval(statusSpinTimer);
-        } catch (e) {
-            Logger.warn("Failed to clear status spinner interval", e);
-        }
+        clearInterval(statusSpinTimer);
         let i = 0;
         const frames = ["", ".", "..", "..."];
         statusEl.style.display = "block";
@@ -160,11 +157,7 @@
      */
     function stopStatusSpinner() {
         if (statusSpinTimer) {
-            try {
-                clearInterval(statusSpinTimer);
-            } catch (e) {
-                Logger.warn("Failed to clear status spinner interval", e);
-            }
+            clearInterval(statusSpinTimer);
             statusSpinTimer = null;
         }
     }
@@ -691,7 +684,7 @@
                     } else {
                         // started: wait for sizeCacheUpdated; show spinner with fallback timeout
                         startStatusSpinner("Refreshing");
-                        setTimeout(async () => {
+                        fallbackTimerId = setTimeout(async () => {
                             if (!statusSpinTimer) return; // already updated
                             const cached3 = await readCache(videoId);
                             const hasSizes =
@@ -879,4 +872,10 @@
             "Unexpected error: " + (e && e.message ? e.message : String(e))
         );
     }
+
+    // Clean up timers when popup closes to prevent leaked async operations
+    window.addEventListener("unload", () => {
+        clearInterval(statusSpinTimer);
+        clearTimeout(fallbackTimerId);
+    });
 })();

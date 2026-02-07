@@ -44,6 +44,9 @@ services:
     ports:
       - "80:80"
       - "8404:8404"
+    environment:
+      - HAPROXY_STATS_USER=${HAPROXY_STATS_USER:-admin}
+      - HAPROXY_STATS_PASSWORD=${HAPROXY_STATS_PASSWORD}
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on:

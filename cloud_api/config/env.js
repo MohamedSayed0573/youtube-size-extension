@@ -24,7 +24,11 @@ const envSchema = z
         ALLOWED_ORIGINS: z
             .string()
             .default("")
-            .transform((val) => (val === "*" ? "*" : val.split(","))),
+            .transform((val) => {
+                if (val === "*") return "*";
+                if (!val) return [];
+                return val.split(",").filter(Boolean);
+            }),
 
         // Redis
         REDIS_URL: z.string().optional(),

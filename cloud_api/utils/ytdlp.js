@@ -102,13 +102,9 @@ function sizeFromFormat(fmt, durationSec) {
     if (fs) return Math.round(fs);
 
     // Estimate from TBR if filesize missing
-    try {
-        const tbr = fmt.tbr; // in kbps
-        if (tbr && durationSec && durationSec > 0) {
-            return Math.round(((tbr * 1000.0) / 8.0) * durationSec);
-        }
-    } catch (e) {
-        // ignore
+    const tbr = fmt.tbr; // in kbps
+    if (tbr && durationSec && durationSec > 0) {
+        return Math.round(((tbr * 1000.0) / 8.0) * durationSec);
     }
     return null;
 }
@@ -214,13 +210,8 @@ function computeSizes(meta, durationHint) {
     const formats = meta.formats || [];
 
     let durationSec = null;
-    try {
-        const dur = meta.duration;
-        if (typeof dur === "number") {
-            durationSec = Math.round(dur);
-        }
-    } catch (e) {
-        // ignore
+    if (typeof meta.duration === "number") {
+        durationSec = Math.round(meta.duration);
     }
 
     if (!durationSec && typeof durationHint === "number" && durationHint > 0) {

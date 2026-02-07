@@ -96,8 +96,23 @@ function createHealthRoutes(workerPool, redisState, ytdlpPath) {
         }
 
         try {
-            const result = await redisState.getDetailedHealth();
-            res.json(result);
+            const start = Date.now();
+            await redisClient.ping();
+            const latency = Date.now() - start;
+
+            const status = redisState.getRedisStatus();
+
+            const info = await redisClient.info("memory").catch(() => null);
+            const memoryMatch = info && info.match(/used_memory_human:(\S+)/);
+
+            res.json({
+                ok: true,
+                redis: "connected",
+                latency: `${latency}ms`,
+                ready: status.ready,
+                url: status.url,
+                memory: memoryMatch ? memoryMatch[1] : "unknown",
+            });
         } catch (error) {
             logger.error(
                 { error: error.message },

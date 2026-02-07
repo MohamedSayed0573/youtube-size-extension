@@ -174,15 +174,14 @@
      * @returns {void}
      */
     function startUrlPoller(intervalMs = 1500) {
-        try {
-            if (urlPollId) clearInterval(urlPollId);
-        } catch (e) {
-            Logger.warn("clearInterval failed", e);
-        }
+        if (urlPollId) clearInterval(urlPollId);
         urlPollId = setInterval(() => {
             if (location.href !== lastHref) {
                 lastHref = location.href;
-                setTimeout(() => readAndNotify(true), 300);
+                setTimeout(() => {
+                    readAndNotify(true);
+                    setup(); // Rebind to new video element if YouTube replaced it
+                }, 300);
             }
         }, intervalMs);
 
@@ -211,7 +210,10 @@
             const h = href || location.href;
             if (h !== lastHref) {
                 lastHref = h;
-                setTimeout(() => readAndNotify(true), 300);
+                setTimeout(() => {
+                    readAndNotify(true);
+                    setup(); // Rebind to new video element if YouTube replaced it
+                }, 300);
             }
         };
         // YouTube-specific SPA events
@@ -248,12 +250,20 @@
      * - loadeddata: Video data is loaded
      * - resize: Video dimensions change
      * - play/seeked: Quality may change during playback
+     *
+     * Tracks the currently bound element so SPA navigations that replace
+     * the video element will trigger a rebind.
      * @returns {void}
+     */
+    let boundVideoEl = null;
+    /**
+     *
      */
     function setup() {
         readAndNotify(true);
         const v = getVideoEl();
-        if (!v) return;
+        if (!v || v === boundVideoEl) return;
+        boundVideoEl = v;
         v.addEventListener("loadedmetadata", () => readAndNotify(true));
         v.addEventListener("loadeddata", () => readAndNotify());
         v.addEventListener("resize", () => readAndNotify());
