@@ -38,7 +38,5 @@
   ],
   "author": "YouTube Size Extension Team",
   "license": "MIT",
-  "dependencies": {
-    "piscina": "^5.1.4"
-  }
+  "dependencies": {}
 }
