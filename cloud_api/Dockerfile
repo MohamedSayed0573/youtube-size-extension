@@ -3,7 +3,7 @@
 # ============================================
 # Build Stage
 # ============================================
-FROM node:20-slim AS builder
+FROM node:25-slim AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ RUN npm ci --only=production
 # ============================================
 # Production Stage
 # ============================================
-FROM node:20-slim
+FROM node:25-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
